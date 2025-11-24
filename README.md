@@ -1,0 +1,163 @@
+# ModelVerify
+
+一个用于验证和测试惯性导航模型的Python工具包。
+
+## 功能特性
+
+- 🧠 **模型加载与预测**: 支持加载PyTorch模型(.pt格式)进行惯性导航预测
+- 📊 **数据处理**: 提供IMU数据和位姿数据的处理与插值功能
+- 🎯 **批量验证**: 支持单个数据单元和整个数据集的批量模型验证
+- 📈 **可视化**: 集成Rerun SDK进行数据可视化
+- 🔧 **灵活配置**: 支持命令行参数配置，可自定义模型和数据路径
+
+## 安装
+
+### 环境要求
+
+- Python >= 3.11
+- 推荐使用 `uv` 作为包管理器
+
+### 安装依赖
+
+```bash
+# 使用uv安装依赖
+uv sync
+
+# 或使用pip安装
+pip install -e .
+```
+
+## 快速开始
+
+### 基本用法
+
+```bash
+# 验证单个数据单元
+python main.py -u <unit_path> -m model1.pt model2.pt
+
+# 验证整个数据集
+python main.py -d <dataset_path> -m model1.pt model2.pt
+
+# 使用AHRS数据
+python main.py -u <unit_path> -m model1.pt --using_ahrs
+```
+
+### 参数说明
+
+- `-u, --unit`: 指定单个数据单元路径
+- `-d, --dataset`: 指定数据集路径
+- `-m, --models`: 指定要使用的模型文件名(必需参数，可指定多个)
+- `--using_ahrs`: 使用AHRS数据而非GT数据旋转IMU数据
+
+## 项目结构
+
+```
+ModelVerify/
+├── main.py              # 主程序入口
+├── TLIOView.py          # TLIO数据可视化
+├── base/                # 核心模块
+│   ├── args_parser.py   # 命令行参数解析
+│   ├── datatype.py      # 数据类型定义
+│   ├── device.py        # 设备配置
+│   ├── interpolate.py   # 数据插值
+│   ├── model.py         # 模型加载与预测
+│   ├── predict.py       # 预测逻辑
+│   └── rerun_ext.py     # Rerun扩展
+├── datasets/            # 数据集目录
+└── results/             # 结果输出目录
+```
+
+## 核心组件
+
+### InerialNetwork
+负责加载和运行PyTorch模型的核心类：
+
+```python
+from base.model import InerialNetwork
+
+# 加载模型
+network = InerialNetwork("path/to/model.pt")
+
+# 进行预测
+measurement, covariance = network.predict(input_data)
+```
+
+### 数据类型
+项目定义了以下核心数据类型：
+
+- `Pose`: 位姿数据(旋转+平移)
+- `ImuData`: IMU传感器数据
+- `UnitData`: 单元数据容器
+- `DeviceDataset`: 设备数据集
+
+### 数据处理
+提供完整的数据处理流程：
+
+- 时间序列插值
+- 旋转插值(SLERP)
+- 向量插值
+- 数据对齐和预处理
+
+## 依赖包
+
+- `numpy>=2.3.5` - 数值计算
+- `pandas>=2.3.3` - 数据处理
+- `torch>=2.9.1` - 深度学习框架
+- `scipy>=1.16.3` - 科学计算
+- `rerun-sdk>=0.27.2` - 数据可视化
+
+## 使用示例
+
+### 1. 单模型验证
+
+```python
+from base.model import ModelLoader, InerialNetwork
+from base.datatype import UnitData
+from base.predict import DataRunner
+
+# 加载模型
+loader = ModelLoader("/path/to/models")
+models = loader.get_by_names(["model.pt"])
+
+# 加载数据
+data = UnitData("/path/to/unit")
+
+# 运行预测
+runner = DataRunner(data, InerialNetworkData.set_step(20))
+runner.predict_batch(models)
+```
+
+### 2. 数据集批量验证
+
+```python
+from base.datatype import DeviceDataset
+
+# 加载数据集
+dataset = DeviceDataset("/path/to/dataset")
+
+# 对每个数据单元进行验证
+for data in dataset:
+    runner = DataRunner(data, InerialNetworkData.set_step(10))
+    runner.predict_batch(models)
+```
+
+## 开发指南
+
+### 添加新模型
+
+1. 将模型文件(.pt格式)放入模型目录
+2. 在命令行中使用`-m`参数指定模型名称
+
+### 扩展数据处理
+
+1. 在`base/datatype.py`中定义新的数据类型
+2. 在`base/interpolate.py`中添加相应的插值方法
+3. 更新`base/predict.py`中的处理逻辑
+
+## 贡献
+
+欢迎提交Issue和Pull Request来改进这个项目。
+
+## 联系方式
+
+如有问题或建议，请通过GitHub Issues联系。
