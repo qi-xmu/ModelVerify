@@ -46,7 +46,7 @@ def tlio_view(path: str | Path, net: InertialNetwork):
 
 if __name__ == "__main__":
     args = DatasetArgsParser().parse()
-    models_path = "/Users/qi/Resources/Models"
+    models_path = "Models"
     loader = ModelLoader(models_path)
 
     net = loader.get_by_name("model_mi_hw_1126")

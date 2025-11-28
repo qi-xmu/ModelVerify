@@ -15,7 +15,7 @@ def main():
     if models is None or len(models) == 0:
         models = ["model_mi_hw_1128"]
 
-    models_path = "/Users/qi/Resources/Models"
+    models_path = "Models"
     if args.args.models_path is not None:
         models_path = args.args.models_path
     loader = ModelLoader(models_path)
