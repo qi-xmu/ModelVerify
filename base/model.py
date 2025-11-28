@@ -96,14 +96,15 @@ class NetworkResult:
 
     def __init__(
         self,
-        suffix: str = "",
+        tag: str = "",
+        init_pose: Pose = Pose.identity(),
         *,
-        step: int,
-        rate: int,
+        step: int = 10,
+        rate: int = 200,
         t_start_us: int,
         using_rerun: bool = True,
     ):
-        self.suffix = suffix
+        self.tag = tag
         self.step = step
         self.rate = rate
         self.using_rerun = using_rerun
@@ -112,15 +113,15 @@ class NetworkResult:
 
         self.meas_list = []
         self.meas_cov_list = []
-        self.pose = Pose.identity()
+        self.pose = init_pose
         self.pose_list = []
         self.path = []
 
         if self.using_rerun:
             rre.log_coordinate(
-                f"/world/network{self.suffix}",
+                f"/world/{self.tag}",
                 length=1,
-                labels=[f"Network{self.suffix}"],
+                labels=[f"Network{self.tag}"],
                 show_labels=False,
             )
 
@@ -139,7 +140,7 @@ class NetworkResult:
         self.t_us.append(self.interval_us + self.t_us[-1])
 
         if self.using_rerun:
-            rre.log_network_pose(self.t_us[-1], self.pose, self.path, tag=self.suffix)
+            rre.log_network_pose(self.t_us[-1], self.pose, self.path, tag=self.tag)
 
         return self.pose
 
@@ -176,29 +177,10 @@ class NetworkResult:
 class InertialNetworkData:
     step = 80
     rate = 200
-    start_idx: int = 0
     rm_g: bool = False
+    _idx_range: slice = slice(None, None, None)
     imu_block: NDArray[np.float32]
     BlockInput: Annotated
-
-    def __init__(
-        self,
-        world_imu_data: ImuData,
-        *,
-        remove_gravity: bool | None = None,
-    ) -> None:
-        assert world_imu_data.frame == "global", "Imu not in global frame."
-        if remove_gravity is not None:
-            self.rm_g = remove_gravity
-        if self.rm_g:
-            world_imu_data.acce -= np.array([0, 0, 9.81])
-        self.imu_block = np.hstack([world_imu_data.gyro, world_imu_data.acce])[
-            self.start_idx :
-        ]
-        self.world_imu_data = world_imu_data[self.start_idx :]
-
-        self.shape = (1, 6, self.rate)
-        self.BlockInput = Annotated[NDArray[np.float32], Literal[1, 6, self.rate]]
 
     @classmethod
     def set_step(cls, step: int):
@@ -216,9 +198,31 @@ class InertialNetworkData:
         return cls
 
     @classmethod
-    def set_start_time(cls, t_s: float):
-        cls.start_idx = int(t_s * cls.rate)
+    def set_time_range(cls, time_range: tuple[float, float]):
+        ts, te = time_range
+        start_idx = int(ts * cls.rate) if ts is not None else None
+        end_idx = int(te * cls.rate) if te is not None else None
+
+        cls._idx_range = slice(start_idx, end_idx)
         return cls
+
+    def __init__(
+        self,
+        world_imu_data: ImuData,
+        *,
+        remove_gravity: bool | None = None,
+    ) -> None:
+        assert world_imu_data.frame == "global", "Imu not in global frame."
+        if remove_gravity is not None:
+            self.rm_g = remove_gravity
+        if self.rm_g:
+            world_imu_data.acce -= np.array([0, 0, 9.81])
+
+        self.world_imu_data = world_imu_data[self._idx_range]
+        self.imu_block = np.hstack([self.world_imu_data.gyro, self.world_imu_data.acce])
+
+        self.shape = (1, 6, self.rate)
+        self.BlockInput = Annotated[NDArray[np.float32], Literal[1, 6, self.rate]]
 
     def get_block(self):
         self.bc = 0
@@ -226,25 +230,33 @@ class InertialNetworkData:
             yield self.imu_block[self.bc : self.bc + self.rate].T.reshape(self.shape)
             self.bc += self.step
 
-    def predict_using(self, net: InertialNetwork):
-        t_start_us = self.world_imu_data.t_us[0]
-        results = NetworkResult(
-            net.name, step=self.step, rate=self.rate, t_start_us=t_start_us
+    def predict_using(self, net: InertialNetwork, init_pose: Pose = Pose.identity()):
+        result = NetworkResult(
+            net.name,
+            init_pose,
+            step=self.step,
+            rate=self.rate,
+            t_start_us=self.world_imu_data.t_us[0],
         )
         for block in self.get_block():
-            _pose = results.add(net.predict(block))
+            _pose = result.add(net.predict(block))
             print(f"{net.name} {self.bc:06d}: {_pose.p}")
-        return results
+        return result
 
-    def predict_usings(self, networks: list[InertialNetwork]):
-        t_start_us = self.world_imu_data.t_us[0]
-
+    def predict_usings(
+        self, networks: list[InertialNetwork], init_pose: Pose = Pose.identity()
+    ):
         results = [
             NetworkResult(
-                model.name, step=self.step, rate=self.rate, t_start_us=t_start_us
+                model.name,
+                init_pose,
+                step=self.step,
+                rate=self.rate,
+                t_start_us=self.world_imu_data.t_us[0],
             )
             for model in networks
         ]
+
         for block in self.get_block():
             for i, net in enumerate(networks):
                 _pose = results[i].add(net.predict(block))
@@ -256,29 +268,41 @@ class InertialNetworkData:
 class DataRunner:
     def __init__(
         self,
-        data: UnitData,
+        ud: UnitData,
         Data: type[InertialNetworkData] = InertialNetworkData,
         *,
+        time_range: tuple[float | None, float | None] = (None, None),
         rerun_init: bool = True,
         using_gt: bool = True,
     ):
-        self.data = data
-        world_imu_gt = data.imu_data.transform(data.gt_data.rots if using_gt else None)
+        self.data = ud
+        gt_data = ud.gt_data.get_time_range(time_range)
+        imu_data = ud.imu_data.get_time_range(time_range)
+
+        world_imu_gt = imu_data.transform(gt_data.rots if using_gt else None)
         self.in_data = Data(world_imu_gt)
 
-        rre.rerun_init(data.name, imu_view_tags=["GT", "Raw"])
-        rre.send_pose_data(data.gt_data, "GT", color=[192, 72, 72])
-        rre.send_imu_data(data.imu_data, tag="Raw")
+        # 获取 gt_data 的起始位置
+        assert len(gt_data) > 0, f"{gt_data}"
+        self.init_pose = Pose.from_transform(gt_data[0].p)
+
+        rre.rerun_init(ud.name, imu_view_tags=["GT", "Raw"])
+        rre.send_pose_data(gt_data, "GT", color=[192, 72, 72])
+        rre.send_imu_data(imu_data, tag="Raw")
         rre.send_imu_data(world_imu_gt, tag="GT")
         if self.data.has_fusion:
-            rre.send_pose_data(data.fusion_data, "Fusion")
+            fusion_data = ud.fusion_data.get_time_range(time_range)
+            fusion_data.trans = (
+                fusion_data.trans - fusion_data.trans[0] + self.init_pose.p
+            )
+            rre.send_pose_data(fusion_data, "Fusion")
 
     def predict(self, net: InertialNetwork):
         print("> Using Model:", net.name)
-        results = self.in_data.predict_using(net)
+        results = self.in_data.predict_using(net, self.init_pose)
         results.to_csv(f"results/{self.data.name}/{net.name}.csv")
 
         print(f"> Model {net.name} prediction completed.")
 
     def predict_batch(self, networks: list[InertialNetwork]):
-        self.in_data.predict_usings(networks)
+        self.in_data.predict_usings(networks, self.init_pose)

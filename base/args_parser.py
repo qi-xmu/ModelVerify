@@ -17,19 +17,17 @@ class DatasetArgsParser:
     # NOTE  Not default parameters
     regen: bool = False
     visual: bool = False
+    time_range: tuple[float | None, float | None] = (None, None)
 
     def __init__(self):
-        self.parser = argparse.ArgumentParser(description="Dataset Arguments Parser")
-        self.parser.add_argument("-d", "--dataset", type=str, help="Path to dataset")
-        self.parser.add_argument("-g", "--group", type=str, help="Path to group path")
-        self.parser.add_argument("-u", "--unit", type=str, help="Path to unit path")
-        self.parser.add_argument("-o", "--output", type=str, help="Path to output")
-        self.parser.add_argument(
-            "-r", "--regen", help="Regenerate Dataset", action="store_true"
-        )
-        self.parser.add_argument(
-            "-v", "--visual", action="store_true", help="Visualize"
-        )
+        self.parser = argparse.ArgumentParser(description="数据集参数解析")
+        self.parser.add_argument("-d", "--dataset", type=str, help="数据集路径")
+        self.parser.add_argument("-g", "--group", type=str, help="数据组路径")
+        self.parser.add_argument("-u", "--unit", type=str, help="数据单元路径")
+        self.parser.add_argument("-o", "--output", type=str, help="输出路径")
+        self.parser.add_argument("-r", "--regen", action="store_true", help="重新生成")
+        self.parser.add_argument("-v", "--visual", action="store_true", help="可视化")
+        self.parser.add_argument("-t", "--time_range", type=float, nargs=2)
 
     def parse(self):
         self.parser.parse_args()

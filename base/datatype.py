@@ -28,7 +28,7 @@ class Pose:
         return Pose(rot, np.zeros(3))
 
     @staticmethod
-    def from_trans(trans: NDArray):
+    def from_transform(trans: NDArray):
         return Pose(Rotation.identity(), trans)
 
     def compose(self, other: Self):
@@ -44,7 +44,7 @@ class Pose:
     def inverse(self):
         return Pose(self.rot.inv(), -self.rot.inv().apply(self.p))
 
-    def get_yaw_pose(self):
+    def get_yaw_rot(self):
         yaw = self.rot.as_euler("ZXY")[0]
         return Pose(Rotation.from_euler("ZXY", [yaw, 0, 0]), np.zeros(3))
 
@@ -96,6 +96,17 @@ class ImuData:
         gyro = rots.apply(self.gyro)
         return ImuData(self.t_us, gyro, acce, rots, frame="global")
 
+    def get_time_range(self, time_range: tuple[float | None, float | None]):
+        ts, te = self.t_us[0], self.t_us[-1]
+        if time_range[0]:
+            ts = time_range[0] * 1e6 + self.t_us[0]
+        if time_range[1]:
+            te = time_range[1] * 1e6 + self.t_us[0]
+        m = (self.t_us >= ts) & (self.t_us <= te)
+        return ImuData(
+            self.t_us[m], self.gyro[m], self.acce[m], self.ahrs[m], frame=self.frame
+        )
+
 
 @dataclass
 class PosesData:
@@ -103,11 +114,24 @@ class PosesData:
     rots: Rotation
     trans: NDArray
 
+    def __len__(self):
+        return len(self.t_us)
+
     def __getitem__(self, index):
         if isinstance(index, int):
             return Pose(self.rots[index], self.trans[index])
         else:
             raise TypeError(f"Unsupported index type: {type(index)}")
+
+    def get_time_range(self, time_range: tuple[float | None, float | None]):
+        ts, te = self.t_us[0], self.t_us[-1]
+        if time_range[0] is not None:
+            ts = time_range[0] * 1e6 + self.t_us[0]
+        if time_range[1] is not None:
+            te = time_range[1] * 1e6 + self.t_us[0]
+
+        mask = (self.t_us >= ts) & (self.t_us <= te)
+        return PosesData(self.t_us[mask], self.rots[mask], self.trans[mask])
 
     def interpolate(self, t_new_us: NDArray):
         rots = slerp_rotation(self.rots, self.t_us, t_new_us)
@@ -211,8 +235,9 @@ class DataCheck:
 class UnitData:
     imu_data: ImuData
     gt_data: PosesData
-    calib_data: CalibrationData
+    fusion_data: PosesData
     check_data: DataCheck
+    calib_data: CalibrationData
 
     def __init__(self, base_dir: Path | str):
         base_dir = Path(base_dir)
@@ -247,12 +272,15 @@ class UnitData:
         # 空间变换
         gt_data.transform_local(self.calib_data.tf_sg_local.inverse())
         # gt_data.transform_global(self.calib_data.tf_sg_global)
-        gt_data.transform_global(gt_data[0].get_yaw_pose().inverse())
+        gt_data.transform_global(gt_data[0].get_yaw_rot().inverse())
 
         # 数据对齐
         t_new_us = get_time_series([imu_data.t_us, gt_data.t_us])
         self.imu_data = imu_data.interpolate(t_new_us)
         self.gt_data = gt_data.interpolate(t_new_us)
+
+    # def set_time_range(self, time_range:tuple[float, float]):
+    # pass
 
 
 class DeviceDataset:
