@@ -6,6 +6,7 @@ TODO:
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 import sophuspy as sp
@@ -32,9 +33,15 @@ class Evaluation:
         # map
         self.resdict["ref_length"] = self.length
 
+    def __str__(self):
+        return json.dumps(self.resdict, indent=4)
+
     def print(self):
-        res_str = json.dumps(self.resdict, indent=4)
-        print(res_str)
+        print(self)
+
+    def save(self, file: Path | str):
+        with open(file, "w") as f:
+            json.dump(self.resdict, f, indent=4)
 
     @staticmethod
     def __get_error(pose1: Pose, pose2: Pose):

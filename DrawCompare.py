@@ -24,6 +24,7 @@ python DrawCompare.py --dataset /path/to/dataset --models_path /custom/models/pa
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from base.binary import SensorFusion
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
 from base.calibration import time
@@ -56,19 +57,29 @@ def main():
     dap.parser.add_argument("--models_path", type=str, help="模型文件夹")
     dap.parse()
 
-    models = dap.args.models
-    if models is None or len(models) == 0:
-        models = ["model_tlio_mi_hw_1204"]
+    model_names = dap.args.models
+    if model_names is None or len(model_names) == 0:
+        model_names = ["model_tlio_mi_hw_1213"]
 
     models_path = "models"
     if dap.args.models_path is not None:
         models_path = dap.args.models_path
 
+    loader = ModelLoader(models_path)
+    Data = InertialNetworkData.set_step(20)
+
+    nets = loader.get_by_names(model_names)
+    model = nets[0].model_path.absolute()
+
     def action(ud: UnitData):
+        # sensor fusion 生成数据
+        sf = SensorFusion()
+        res_dir = sf.unit_run(ud, model=model)
+
         imu_data = ImuData.from_csv(ud._imu_path)
         gt_data = GroundTruthData.from_csv(ud._gt_path)
         camera_data = CameraData.from_csv(ud._cam_path)
-        fusion_data = FusionData.from_csv(ud.base_dir / "fusion_desktop.csv")
+        fusion_data = FusionData.from_csv(res_dir)
         result_data = CameraData.from_csv(ud.base_dir / "result.csv")
 
         # 完成时间校准
@@ -109,7 +120,7 @@ def main():
         ud.gt_data = gt_data
         ud.imu_data = imu_data
         runner = DataRunner(ud, Data, using_gt=True, has_init_rerun=True)
-        net_results = runner.predict_batch(loader.get_by_names(models))
+        net_results = runner.predict_batch(nets)
         netres_data = PosesData.from_list(net_results[0].pose_list)
 
         # 计算 ATE
@@ -119,9 +130,8 @@ def main():
         evaluator.get_eval(result_data, "result")
         evaluator.get_eval(netres_data, "netres")
         evaluator.print()
+        evaluator.save(ud.base_dir / "eval.json")
 
-    loader = ModelLoader(models_path)
-    Data = InertialNetworkData.set_step(20)
     if dap.unit:
         ud = UnitData(dap.unit, using_ext=False)
         action(ud)

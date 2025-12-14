@@ -21,8 +21,8 @@ class TestEvaluation(unittest.TestCase):
         )
 
         evaluator = Evaluation(ref_poses)
-        err = evaluator.get_ape(eva_poses)
-        print(evaluator.length, err)
+        evaluator.get_eval(eva_poses, "test")
+        evaluator.print()
 
 
 if __name__ == "__main__":

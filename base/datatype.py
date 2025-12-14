@@ -334,6 +334,11 @@ class UnitData:
         self.name = base_dir.name
         self.base_dir = base_dir
 
+        # 设备名称
+        spl = self.name.split("_")
+        device_name = spl[2] if len(spl) > 2 else "default"
+        self.device_name = device_name  # type: ignore
+
         self._imu_path = base_dir / "imu.csv"
         self._cam_path = base_dir / "cam.csv"
         self.__gt_path_1 = base_dir / "rtab.csv"
