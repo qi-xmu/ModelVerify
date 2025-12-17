@@ -3,49 +3,47 @@
 
 """
 
-import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+from base.interpolate import get_time_series
 
 from ..datatype import Pose, PosesData
 
 
-class HandEyeAlg:
-    Tsai = cv2.CALIB_HAND_EYE_TSAI
-    Andreff = cv2.CALIB_HAND_EYE_ANDREFF
-    Horaud = cv2.CALIB_HAND_EYE_HORAUD
-    Park = cv2.CALIB_HAND_EYE_PARK
-    Daniilidis = cv2.CALIB_HAND_EYE_DANIILIDIS
+def get_angle(v1, v2):
+    # v1 = v1 / np.linalg.norm(v1)
+    # v2 = v2 / np.linalg.norm(v2)
+    # 计算夹角
+    dot = np.dot(v1, v2)
+    det = np.cross(v1, v2)
+    return np.arctan2(det, dot)
 
 
-def global21(
+def global12(
     cs1: PosesData,
     cs2: PosesData,
-    alg=HandEyeAlg.Tsai,
-    rot_only=False,
 ) -> Pose:
     """calibrateHandEye return R_gc, t_gc
     隐含信息：base 和 target 为刚体，gripper 和 camera 为刚体。
     """
-    assert len(cs1) > 10, f"Not enough data points {len(cs1)}"
-    assert len(cs1) == len(cs2), f"{len(cs1)} != {len(cs2)}"
-    # 标定
-    rots1 = cs1.rots.inv().as_matrix()
-    rots2 = cs2.rots.as_matrix()
-    ps1 = cs1.ps
-    ps2 = cs2.ps
-    if rot_only:
-        ps1 = np.zeros_like(ps1)
-        ps2 = np.zeros_like(ps2)
+    # 插值对齐
+    t_new_us = get_time_series([cs1.t_us, cs2.t_us], rate=100)
+    cs1 = cs1.interpolate(t_new_us)
+    cs2 = cs2.interpolate(t_new_us)
 
-    rot_gc, t_gc = cv2.calibrateHandEye(rots1, ps1, rots2, ps2, method=alg)  # type:ignore
-    rvec = cv2.Rodrigues(rot_gc)[0]
-    ang = np.linalg.norm(rvec)
-    if ang != 0:
-        rvec = rvec / ang
-    print("旋转向量: ", rvec.flatten(), ang * 180 / np.pi)
-    print("位移: ", t_gc.flatten())
+    angles = []
+    for i in range(len(cs1)):
+        v1 = (cs1.ps[i] - cs1.ps[0])[:2]
+        v2 = (cs2.ps[i] - cs2.ps[0])[:2]
 
-    rot = Rotation.from_matrix(rot_gc)
-    p = t_gc.flatten()
-    return Pose(rot, p)
+        l1 = np.linalg.norm(v1)
+        l2 = np.linalg.norm(v2)
+        if l1 > 2 and np.abs(l1 - l2) < 3:
+            ang = get_angle(v1, v2)
+            angles.append(ang)
+
+    # 构造绕z轴的旋转
+    rad = -np.mean(np.array(angles))
+    rot12 = Rotation.from_rotvec([0, 0, rad])
+    return Pose(rot12, np.zeros(3))

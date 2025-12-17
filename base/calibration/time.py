@@ -2,7 +2,7 @@ import numpy as np
 from numpy._typing import NDArray
 from scipy.spatial.transform import Rotation
 
-from base.datatype import Pose, PosesData
+from base.datatype import PosesData
 from base.interpolate import get_time_series
 
 
@@ -57,29 +57,4 @@ def match21(
     cs2 = cs2.get_time_range(time_range)
     cs2.t_us += t21_us
 
-    def get_angle(v1, v2):
-        # v1 = v1 / np.linalg.norm(v1)
-        # v2 = v2 / np.linalg.norm(v2)
-        # 计算夹角
-        dot = np.dot(v1, v2)
-        det = np.cross(v1, v2)
-        return np.arctan2(det, dot)
-
-    angles = []
-    for i in range(len(cs1) - lag):
-        v1 = (cs1.ps[i + lag] - cs1.ps[lag])[:2]
-        v2 = (cs2.ps[i] - cs2.ps[0])[:2]
-
-        l1 = np.linalg.norm(v1)
-        l2 = np.linalg.norm(v2)
-        if l1 > 2 and np.abs(l1 - l2) < 1:
-            t1 = cs1.t_us[i + lag] / 1e6
-            t2 = cs2.t_us[i] / 1e6
-            ang = get_angle(v1, v2)
-            print(i, t1, t2, l1, l2, ang * 180 / np.pi)
-            angles.append(ang)
-
-    # 构造绕z轴的旋转
-    rad = np.mean(np.array(angles))
-    rot21 = Rotation.from_rotvec([0, 0, rad])
-    return t21_us, Pose(rot21, np.zeros(3))
+    return t21_us

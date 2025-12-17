@@ -11,7 +11,12 @@ def slerp_rotation(rots: Rotation, t_old_us: NDArray, t_new_us: NDArray) -> Rota
     return rots_new
 
 
-def interpolate_vector3(vec3: NDArray, t_old_us: NDArray, t_new_us: NDArray) -> NDArray:
+def interpolate_vector3(
+    vec3: NDArray,
+    t_old_us: NDArray,
+    t_new_us: NDArray,
+    bounds_error: bool = False,
+) -> NDArray:
     assert len(vec3) == len(t_old_us)
     vec3 = np.array(vec3)
 
@@ -20,6 +25,7 @@ def interpolate_vector3(vec3: NDArray, t_old_us: NDArray, t_new_us: NDArray) -> 
         vec3,
         axis=0,
         kind="cubic",
+        bounds_error=bounds_error,
         fill_value="extrapolate",
     )
     vec3_new = interp(t_new_us)

@@ -101,9 +101,9 @@ class PosesData:
         mask = (self.t_us >= ts) & (self.t_us <= te)
         return PosesData(self.t_us[mask], self.rots[mask], self.ps[mask])
 
-    def interpolate(self, t_new_us: NDArray):
+    def interpolate(self, t_new_us: NDArray, bounds_error: bool = False):
         rots = slerp_rotation(self.rots, self.t_us, t_new_us)
-        trans = interpolate_vector3(self.ps, self.t_us, t_new_us)
+        trans = interpolate_vector3(self.ps, self.t_us, t_new_us, bounds_error)
         return PosesData(t_new_us, rots, trans)
 
     def transform_local(self, tf: Pose):
@@ -182,12 +182,16 @@ class ImuData:
         raw = pd.read_csv(path).dropna().to_numpy()
         return ImuData.from_raw(raw)
 
-    def interpolate(self, t_new_us: NDArray):
-        acce = interpolate_vector3(self.acce, self.t_us, t_new_us)
-        gyro = interpolate_vector3(self.gyro, self.t_us, t_new_us)
+    def interpolate(
+        self,
+        t_new_us: NDArray,
+        bounds_error: bool = False,
+    ):
+        acce = interpolate_vector3(self.acce, self.t_us, t_new_us, bounds_error)
+        gyro = interpolate_vector3(self.gyro, self.t_us, t_new_us, bounds_error)
         ahrs = slerp_rotation(self.ahrs, self.t_us, t_new_us)
         # 磁场
-        magn = interpolate_vector3(self.magn, self.t_us, t_new_us)
+        magn = interpolate_vector3(self.magn, self.t_us, t_new_us, bounds_error)
         return ImuData(t_new_us, gyro, acce, ahrs, magn)
 
     def transform(self, rots: Rotation | None = None):
@@ -249,7 +253,11 @@ class CameraColumn:
 class CameraData(PosesData):
     @staticmethod
     def from_csv(path: Path):
-        df = pd.read_csv(path).drop_duplicates(CameraColumn.t)
+        df = (
+            pd.read_csv(path)
+            .sort_values(by=CameraColumn.t)
+            .drop_duplicates(CameraColumn.t)
+        )
         t_sensor_us = df[CameraColumn.t].to_numpy().flatten()
         t_us = df[CameraColumn.t_sys].to_numpy().flatten()
         trans = df[CameraColumn.ps].to_numpy()
@@ -277,7 +285,7 @@ class FusionData(PosesData):
 
     @staticmethod
     def from_csv(path: Path):
-        raw = pd.read_csv(path).to_numpy()
+        raw = pd.read_csv(path).drop_duplicates(CameraColumn.t).to_numpy()
         return FusionData.from_raw(raw)
 
 

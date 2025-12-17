@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 from numpy.typing import NDArray
+from scipy.spatial.transform import Rotation
 
 import base.rerun_ext as rre
 
@@ -238,6 +239,25 @@ class InertialNetworkData:
             )
             self.bc += self.step
 
+    def rotate_block(self, block: NDArray, rot: Rotation):
+        """
+        block : [1, 6, 200], gyro(3), acce(3)
+        """
+
+        # yaw = rot.as_euler("ZXY")[0]
+        # rot = Rotation.from_rotvec([0, 0, -yaw])
+        print(block)
+
+        gyro_block = block[0, 0:3, :]
+        acce_block = block[0, 3:6, :]
+        gyro_block = rot.apply(gyro_block.T)
+        acce_block = rot.apply(acce_block.T)
+        block[0, 0:3, :] = gyro_block.T
+        block[0, 3:6, :] = acce_block.T
+
+        print(block)
+        return block
+
     def predict_using(self, net: InertialNetwork, ref_poses: PosesData):
         result = NetworkResult(
             net.name, ref_poses.get_pose(0).p, step=self.step, rate=self.rate
@@ -257,8 +277,33 @@ class InertialNetworkData:
 
         for idx, block in self.get_block_idx():
             for i, net in enumerate(networks):
-                _pose = results[i].add(net.predict(block), ref_poses.get_pose(idx))
+                ref_pose = ref_poses.get_pose(idx)
+                net_out = net.predict(block)
+                _pose = results[i].add(net_out, ref_pose)
                 print(f"{net.name}-{self.bc}: {_pose.p}")
+
+        return results
+
+    def predict_usings_rot(self, networks: list[InertialNetwork], ref_poses: PosesData):
+        results = [
+            NetworkResult(
+                model.name, ref_poses.get_pose(0).p, step=self.step, rate=self.rate
+            )
+            for model in networks
+        ]
+
+        for idx, block in self.get_block_idx():
+            for i, net in enumerate(networks):
+                ref_pose = ref_poses.get_pose(idx)
+                yaw_rot = ref_pose.get_yaw_rot().rot
+                block = self.rotate_block(block, yaw_rot)
+
+                net_out = net.predict(block)
+                net_out = yaw_rot.inv().apply(net_out[0]), net_out[1]
+                _pose = results[i].add(net_out, ref_pose)
+                print(
+                    f"{net.name}-{self.bc}: {_pose.p} with rot={yaw_rot.as_rotvec(degrees=True)}"
+                )
 
         return results
 
@@ -303,3 +348,6 @@ class DataRunner:
 
     def predict_batch(self, networks: list[InertialNetwork]):
         return self.in_data.predict_usings(networks, self.gt_data)
+
+    def predict_batch_rot(self, networks: list[InertialNetwork]):
+        return self.in_data.predict_usings_rot(networks, self.gt_data)

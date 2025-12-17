@@ -57,10 +57,10 @@ def main():
     dap.parser.add_argument("--models_path", type=str, help="模型文件夹")
     dap.parse()
 
-    # regen_fusion = dap.regen
+    regen_fusion = dap.regen
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
-        model_names = ["model_tlio_mi_hw_1216"]
+        model_names = ["model_tlio_mi_hw_1213"]
 
     models_path = "models"
     if dap.args.models_path is not None:
@@ -74,15 +74,15 @@ def main():
 
     def action(ud: UnitData):
         # sensor fusion 生成数据
-        sf = SensorFusion()
-        res_dir = sf.unit_run(ud, model=model)
+        if regen_fusion:
+            sf = SensorFusion()
+            res_dir = sf.unit_run(ud, model=model)
+        else:
+            res_dir = ud.base_dir / "fusion.csv"
 
         imu_data = ImuData.from_csv(ud._imu_path)
         gt_data = GroundTruthData.from_csv(ud._gt_path)
-        camera_data = CameraData.from_csv(ud._cam_path)
         fusion_data = FusionData.from_csv(res_dir)
-        result_data = CameraData.from_csv(ud.base_dir / "result.csv")
-        # fusion_data = result_data
 
         # 完成时间校准
         time_gc = time.match21(fusion_data, gt_data)
@@ -93,48 +93,34 @@ def main():
         gt_data.transform_local(DefaultBodyTransform)
         gt_data.transform_global(tf_fg)
 
-        tf_fr = space.global12(fusion_data, result_data)
-        result_data.transform_global(tf_fr)
-        camera_data.transform_global(tf_fr)
-
         gt_data.ps -= gt_data.ps[0]
         fusion_data.ps -= fusion_data.ps[0]
-        result_data.ps -= result_data.ps[0]
-        camera_data.ps -= camera_data.ps[0]
 
         # 获取共同的时间窗口
         ts_us = []
         ts_us.append(gt_data.t_us)
         ts_us.append(imu_data.t_us)
-        ts_us.append(camera_data.t_us)
-        ts_us.append(fusion_data.t_us)
-        ts_us.append(result_data.t_us)
+        # ts_us.append(fusion_data.t_us)
 
         t_new_us = get_time_series(ts_us)
         ud.gt_data = gt_data.interpolate(t_new_us)
         ud.imu_data = imu_data.interpolate(t_new_us)
-        camera_data = camera_data.interpolate(t_new_us)
-        fusion_data = fusion_data.interpolate(t_new_us)
-        result_data = result_data.interpolate(t_new_us)
+        # fusion_data = fusion_data.interpolate(t_new_us)
 
         # 可视化
         bre.rerun_init(ud.name)
         bre.send_pose_data(ud.gt_data, "Groundtruth", color=[192, 72, 72])
         bre.send_pose_data(gt_data, "__gtc", color=[192, 72, 72])
         bre.send_pose_data(fusion_data, "Fusion", color=[72, 192, 72])
-        bre.send_pose_data(camera_data, "Camera", color=[72, 72, 192])
-        bre.send_pose_data(result_data, "Reuslt", color=[192, 192, 72])
 
         # 模型推理
         runner = DataRunner(ud, Data, using_gt=True, has_init_rerun=True)
-        net_results = runner.predict_batch(nets)
+        net_results = runner.predict_batch_rot(nets)
         netres_data = PosesData.from_list(net_results[0].pose_list)
 
         # 计算 ATE
         evaluator = Evaluation(ud.gt_data)
-        evaluator.get_eval(camera_data, "camera")
-        evaluator.get_eval(fusion_data, "fusion")
-        evaluator.get_eval(result_data, "result")
+        # evaluator.get_eval(fusion_data, "fusion")
         evaluator.get_eval(netres_data, "netres")
         evaluator.print()
         evaluator.save(ud.base_dir / "eval.json")
