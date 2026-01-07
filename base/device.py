@@ -16,5 +16,6 @@ class Device:
 
 
 DefaultDevice = Device().device
+CpuDevice = torch.device("cpu")
 
 __all__ = ["DefaultDevice"]

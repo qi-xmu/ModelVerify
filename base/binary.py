@@ -30,10 +30,10 @@ class SensorFusion:
         unit: Path,
         *,
         model: Path | None = None,
-        device: str,
+        config_name: str,
         use_build: bool = False,
     ):
-        config_path = self.configs_path / f"{device}.yaml"
+        config_path = self.configs_path / f"{config_name}.yaml"
         return self.runner(
             self.TARGET,
             unit,
@@ -47,8 +47,10 @@ class SensorFusion:
         self,
         ud: UnitData,
         model: Path | None = None,
+        config_name: str | None = None,
         use_build: bool = False,
     ):
+        config_name = ud.device_name if config_name is None else config_name
         return self.run(
-            ud.base_dir, model=model, device=ud.device_name, use_build=use_build
+            ud.base_dir, model=model, config_name=config_name, use_build=use_build
         )

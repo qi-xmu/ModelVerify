@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Literal, TypeAlias
+from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -9,8 +9,8 @@ from scipy.spatial.transform import Rotation
 
 import base.rerun_ext as rre
 
+from . import device
 from .datatype import ImuData, Pose, PosesData, UnitData
-from .device import DefaultDevice
 
 NetworkOutput: TypeAlias = tuple[NDArray, NDArray]
 
@@ -25,7 +25,7 @@ class InertialNetwork:
     ):
         self.model_path = Path(model_path)
         self.name = self.model_path.name.split(".")[0]
-        self.device = DefaultDevice
+        self.device = device.CpuDevice
         self.model = torch.jit.load(self.model_path, map_location=self.device)
         self.input_shape = input_shape
         self.model.eval()
@@ -47,13 +47,68 @@ class InertialNetwork:
         self.model.eval()
 
 
+class MemoryInertialNetwork(InertialNetwork):
+    Memory = tuple[torch.Tensor, torch.Tensor]
+    hn: torch.Tensor = torch.zeros((1, 1, 256))
+    cn: torch.Tensor = torch.zeros((1, 1, 256))
+
+    def __init__(
+        self,
+        model_path: Path | str,
+        input_shape: tuple[int, ...] | None = None,
+        polling_rate=10,
+    ):
+        super().__init__(model_path, input_shape)
+        self.polling_rate = polling_rate
+        self.idx = 0
+        self.memories = []
+
+    def get_memory(self) -> Memory:
+        if len(self.memories) <= 10:
+            return (self.hn, self.cn)
+        else:
+            return self.memories[self.idx - self.polling_rate]
+
+    def set_memory(self, memory: Memory):
+        self.memories.append(memory)
+        self.idx += 1
+
+    def predict(self, block: NDArray) -> NetworkOutput:
+        if self.input_shape:
+            assert block.shape == self.input_shape, (
+                f"Input shape mismatch: {block.shape} != {self.input_shape}"
+            )
+        inputs = torch.as_tensor(block, dtype=torch.float32, device=self.device)
+        memory = self.get_memory()
+        output = self.model(inputs, *memory)
+
+        meas: NDArray = output[0].cpu().detach().numpy().flatten()
+        meas_cov: NDArray = output[1].cpu().detach().numpy().flatten()
+
+        if len(output) > 2:
+            hn = output[2]
+            cn = output[3]
+            self.set_memory((hn, cn))
+
+        return meas, meas_cov
+
+    def reset(self):
+        self.model.eval()
+        self.idx = 0
+        self.memories = []
+
+
 class ModelLoader:
     _suffix = ".pt"
-    models: list = []
+    models: list[Path] = []
 
     def __init__(self, base_dir: Path | str):
         path = Path(base_dir)
-        self.models = [it for it in path.iterdir() if it.name.endswith(self._suffix)]
+        self.models = [
+            it
+            for it in path.iterdir()
+            if it.name.endswith(self._suffix) and it.is_file()
+        ]
 
     def __iter__(self):
         for model_path in self.models:
@@ -67,16 +122,21 @@ class ModelLoader:
     def __len__(self):
         return self.models.__len__()
 
+    def search_by_name(self, name: str):
+        for model_path in self.models:
+            model_name: str = model_path.name
+            if name in model_name:
+                return model_path
+        raise ValueError(f"Model {name} not found.")
+
     def get_by_names(self, names: list[str]):
         return [self.get_by_name(name) for name in names]
 
     def get_by_name(self, name: str):
-        for model_path in self.models:
-            if model_path.is_dir():
-                continue
-            if model_path.name.startswith(name):
-                return InertialNetwork(model_path)
-        raise ValueError(f"Model {name} not found.")
+        model_path = self.search_by_name(name)
+        if "lstm" in model_path.name:
+            return MemoryInertialNetwork(model_path)
+        return InertialNetwork(model_path)
 
     def get_networks(self):
         return [InertialNetwork(model_path) for model_path in self.models]
@@ -92,7 +152,7 @@ class NetworkResult:
 
     t_us: list[int]
     pose: Pose
-    path: list[NDArray]
+    # path: list[NDArray] = []
     pose_list: list[Pose]
 
     def __init__(
@@ -112,7 +172,7 @@ class NetworkResult:
 
         self.meas_list = []
         self.meas_cov_list = []
-        self.positon = init_positon
+        self.positon = init_positon.copy()
         self.pose_list = []
         self.path = []
 
@@ -140,7 +200,7 @@ class NetworkResult:
         self.pose_list.append(ref_pose.copy())
         self.path.append(ref_pose.p.copy())
 
-        if self.using_rerun:
+        if self.using_rerun and ref_pose.t_us > 0:
             rre.log_network_pose(ref_pose.t_us, ref_pose, self.path, tag=self.tag)
         return ref_pose
 
@@ -175,12 +235,31 @@ class NetworkResult:
 
 
 class InertialNetworkData:
+    """
+    惯性网络数据处理类
+
+    该类用于处理IMU数据，为神经网络预测提供数据块。主要功能包括：
+    - 数据预处理（移除重力、时间范围裁剪）
+    - 生成固定大小的数据块用于网络输入
+    - 支持数据旋转以适应不同坐标系
+    - 提供批量预测功能
+
+    Attributes:
+        step (int): 数据块之间的步长，默认为80
+        rate (int): IMU数据采样率，默认为200Hz
+        rm_g (bool): 是否移除重力加速度，默认为False
+        _idx_range (slice): 时间范围索引切片
+        imu_block (NDArray[np.float32]): 处理后的IMU数据块，包含陀螺仪和加速度计数据
+
+    Note:
+        输入的IMU数据应处于全局坐标系（global frame）
+    """
+
     step = 80
     rate = 200
     rm_g: bool = False
     _idx_range: slice = slice(None, None, None)
     imu_block: NDArray[np.float32]
-    BlockInput: Annotated
 
     @classmethod
     def set_step(cls, step: int):
@@ -222,41 +301,30 @@ class InertialNetworkData:
         self.imu_block = np.hstack([self.world_imu_data.gyro, self.world_imu_data.acce])
 
         self.shape = (1, 6, self.rate)
-        self.BlockInput = Annotated[NDArray[np.float32], Literal[1, 6, self.rate]]
 
     def get_block(self):
         self.bc = 0
         while self.bc + self.rate < len(self.imu_block):
-            yield self.imu_block[self.bc : self.bc + self.rate].T.reshape(self.shape)
+            block = self.imu_block[self.bc : self.bc + self.rate]
+            yield block.T.reshape(self.shape)
             self.bc += self.step
 
     def get_block_idx(self):
         self.bc = 0
         while self.bc + self.rate < len(self.imu_block):
-            yield (
-                self.bc,
-                self.imu_block[self.bc : self.bc + self.rate].T.reshape(self.shape),
-            )
+            block = self.imu_block[self.bc : self.bc + self.rate]  # 200 x 6
+            yield (self.bc, block.T.reshape(self.shape))
             self.bc += self.step
 
     def rotate_block(self, block: NDArray, rot: Rotation):
         """
         block : [1, 6, 200], gyro(3), acce(3)
         """
-
-        # yaw = rot.as_euler("ZXY")[0]
-        # rot = Rotation.from_rotvec([0, 0, -yaw])
-        print(block)
-
-        gyro_block = block[0, 0:3, :]
-        acce_block = block[0, 3:6, :]
-        gyro_block = rot.apply(gyro_block.T)
-        acce_block = rot.apply(acce_block.T)
-        block[0, 0:3, :] = gyro_block.T
-        block[0, 3:6, :] = acce_block.T
-
-        print(block)
-        return block
+        gyro_block = block[0, 0:3, :].T
+        acce_block = block[0, 3:6, :].T
+        gyro_block = rot.apply(gyro_block)
+        acce_block = rot.apply(acce_block)
+        return np.hstack([gyro_block, acce_block]).T.reshape(self.shape)
 
     def predict_using(self, net: InertialNetwork, ref_poses: PosesData | None = None):
         if ref_poses is None:
@@ -274,43 +342,54 @@ class InertialNetworkData:
             print(f"{net.name}-{self.bc}: {_pose.p}")
         return result
 
-    def predict_usings(self, networks: list[InertialNetwork], ref_poses: PosesData):
+    def predict_using_rot(
+        self, network: InertialNetwork, ref_poses: PosesData, degrees: list = [0]
+    ):
         results = [
             NetworkResult(
-                model.name, ref_poses.get_pose(0).p, step=self.step, rate=self.rate
+                f"{network.name}_{deg}",
+                ref_poses.get_pose(0).p,
+                step=self.step,
+                rate=self.rate,
             )
-            for model in networks
+            for deg in degrees
         ]
 
         for idx, block in self.get_block_idx():
-            for i, net in enumerate(networks):
-                ref_pose = ref_poses.get_pose(idx)
-                net_out = net.predict(block)
-                _pose = results[i].add(net_out, ref_pose)
-                print(f"{net.name}-{self.bc}: {_pose.p}")
-
-        return results
-
-    def predict_usings_rot(self, networks: list[InertialNetwork], ref_poses: PosesData):
-        results = [
-            NetworkResult(
-                model.name, ref_poses.get_pose(0).p, step=self.step, rate=self.rate
-            )
-            for model in networks
-        ]
-
-        for idx, block in self.get_block_idx():
-            for i, net in enumerate(networks):
-                ref_pose = ref_poses.get_pose(idx)
-                yaw_rot = ref_pose.get_yaw_rot().rot
-                block = self.rotate_block(block, yaw_rot)
-
-                net_out = net.predict(block)
+            ref_pose = ref_poses.get_pose(idx)
+            for i, deg in enumerate(degrees):
+                # 旋转任意角度
+                yaw_rot = Rotation.from_rotvec([0, 0, deg], degrees=True)
+                block_rot = self.rotate_block(block, yaw_rot)
+                # 获取网络结果
+                net_out = network.predict(block_rot)
+                # 反向旋转
                 net_out = yaw_rot.inv().apply(net_out[0]), net_out[1]
                 _pose = results[i].add(net_out, ref_pose)
-                print(
-                    f"{net.name}-{self.bc}: {_pose.p} with rot={yaw_rot.as_rotvec(degrees=True)}"
-                )
+                print(f"{network.name}_{deg}-{idx}: {_pose.p}")
+        return results
+
+    def predict_usings(self, networks: list[InertialNetwork], ref_poses: PosesData):
+        """
+        批量预测是否
+        """
+        results = [
+            NetworkResult(
+                model.name, ref_poses.get_pose(0).p, step=self.step, rate=self.rate
+            )
+            for model in networks
+        ]
+
+        for idx, block in self.get_block_idx():
+            ref_pose = ref_poses.get_pose(idx)
+            yaw_rot = ref_pose.get_yaw_pose().rot
+            for i, net in enumerate(networks):
+                block_rot = self.rotate_block(block, yaw_rot)
+
+                net_out = net.predict(block_rot)
+                net_out = yaw_rot.inv().apply(net_out[0]), net_out[1]
+                _pose = results[i].add(net_out, ref_pose)
+                print(f"{net.name}-{self.bc}: {_pose.p}")
 
         return results
 
@@ -329,7 +408,11 @@ class DataRunner:
         self.gt_data = ud.gt_data.get_time_range(time_range)
         self.imu_data = ud.imu_data.get_time_range(time_range)
 
+        # 变换到global
         world_imu_gt = self.imu_data.transform(self.gt_data.rots if using_gt else None)
+        # world_imu_gt = world_imu_gt.transform(
+        #     Rotation.from_rotvec([0, 40, 0], degrees=True)
+        # )
         self.in_data = Data(world_imu_gt)
 
         # 获取 gt_data 的起始位置
@@ -353,8 +436,8 @@ class DataRunner:
 
         print(f"> Model {net.name} prediction completed.")
 
+    def predict_rot(self, network: InertialNetwork, degrees: list = [0]):
+        return self.in_data.predict_using_rot(network, self.gt_data, degrees)
+
     def predict_batch(self, networks: list[InertialNetwork]):
         return self.in_data.predict_usings(networks, self.gt_data)
-
-    def predict_batch_rot(self, networks: list[InertialNetwork]):
-        return self.in_data.predict_usings_rot(networks, self.gt_data)

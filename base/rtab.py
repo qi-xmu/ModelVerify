@@ -10,14 +10,19 @@ from scipy.spatial.transform import Rotation
 
 from base.interpolate import interpolate_vector3, slerp_rotation
 
+# 对其IMU矩阵
+DefaultBodyRotation = Rotation.from_rotvec([0, -90, 0], degrees=True)
+
 
 class RTABData:
     opt_ids: list[int]
     opt_t_us: NDArray[np.int64]
+    opt_rots: Rotation
     opt_ps: NDArray
 
     node_ids: list[int]
     node_t_us: NDArray[np.int64]
+    node_rots: Rotation
     node_ps: NDArray
 
     t_us_f0: NDArray[np.int64]
@@ -25,8 +30,6 @@ class RTABData:
 
     t_len_s: float
     rate: float
-    node_rots: Rotation
-    opt_rots: Rotation
 
     def __init__(
         self,
@@ -39,9 +42,11 @@ class RTABData:
         self.node_ids = []
 
         if self.file_path.endswith(".csv"):
+            # rtab.csv 文件
             print("Loading from CSV data...")
             self.load_csv_data()
         elif self.file_path.endswith(".db"):
+            # *.db 文件
             print("Loading from DB data...")
             # 从数据库中加载
             self.conn = sqlite3.connect(self.file_path)
@@ -59,26 +64,6 @@ class RTABData:
 
     def __len__(self):
         return len(self.node_t_us)
-
-    @staticmethod
-    def get_db_file(base_dir: Path):
-        for file in base_dir.iterdir():
-            if file.suffix == ".db":
-                gt_path = file
-                break
-        else:
-            err_msg = f"No .db file found in {base_dir}"
-            raise FileNotFoundError(err_msg)
-        return gt_path
-
-    def load_csv_data(self):
-        # #timestamp [us],p_RN_x [m],p_RN_y [m],p_RN_z [m],q_RN_w [],q_RN_x [],q_RN_y [],q_RN_z []
-        data = pd.read_csv(self.file_path).to_numpy()
-        self.node_t_us = data[:, 0]
-        self.node_ps = data[:, 1:4]
-        self.node_rots = Rotation.from_quat(data[:, 4:], scalar_first=True)
-        self.opt_rots = self.node_rots
-        self.opt_ps = self.node_ps
 
     @classmethod
     def _decompress_data(cls, blob_data) -> bytes | None:
@@ -106,6 +91,25 @@ class RTABData:
             rot = Rotation.from_matrix(pose_matrix[:3, :3])
             return (rot, p)
         return None
+
+    @staticmethod
+    def get_db_file(base_dir: Path):
+        for file in base_dir.iterdir():
+            if file.suffix == ".db":
+                gt_path = file
+                break
+        else:
+            return None
+        return gt_path
+
+    def load_csv_data(self):
+        # #timestamp [us],p_RN_x [m],p_RN_y [m],p_RN_z [m],q_RN_w [],q_RN_x [],q_RN_y [],q_RN_z []
+        data = pd.read_csv(self.file_path).to_numpy()
+        self.node_t_us = data[:, 0]
+        self.node_ps = data[:, 1:4]
+        self.node_rots = Rotation.from_quat(data[:, 4:], scalar_first=True)
+        self.opt_rots = self.node_rots
+        self.opt_ps = self.node_ps
 
     def load_opt_data(self):
         # 查询Admin表中的opt_poses数据
@@ -187,6 +191,10 @@ class RTABData:
         self.node_ps = interpolate_vector3(self.node_ps, self.t_sys_us, t_new_us)
         self.t_sys_us = t_new_us
 
+    def transform_local(self):
+        self.node_rots = self.node_rots * DefaultBodyRotation
+        self.opt_rots = self.opt_rots * DefaultBodyRotation
+
     def save_csv(self, path: str | Path, using_opt: bool = False):
         # #timestamp [us],p_RS_R_x [m],p_RS_R_y [m],p_RS_R_z [m],q_RS_w [],q_RS_x [],q_RS_y [],q_RS_z [],
         header = [
@@ -203,14 +211,12 @@ class RTABData:
         t_us = self.node_t_us if not using_opt else self.opt_t_us
         ps = self.node_ps if not using_opt else self.opt_ps
         rots = self.node_rots if not using_opt else self.opt_rots
-
-        data = np.concatenate(
+        data = np.hstack(
             [
                 t_us.reshape(-1, 1),
                 ps,
                 rots.as_quat(scalar_first=True),
-            ],
-            axis=1,
+            ]
         )
 
         pd.DataFrame(data, columns=header).to_csv(  # type:ignore

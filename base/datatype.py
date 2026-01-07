@@ -46,7 +46,7 @@ class Pose:
     def inverse(self):
         return Pose(self.rot.inv(), -self.rot.inv().apply(self.p))
 
-    def get_yaw_rot(self):
+    def get_yaw_pose(self):
         yaw = self.rot.as_euler("ZXY")[0]
         return Pose(Rotation.from_rotvec([0, 0, yaw]), np.zeros(3))
 
@@ -96,12 +96,12 @@ class PosesData:
             te = time_range[1] * 1e6 + self.t_us[0]
         return self.get_time_region((ts, te))
 
-    def get_time_region(self, t_region: tuple[int, int]):
+    def get_time_region(self, t_region: tuple[int, int]) -> "PosesData":
         ts, te = t_region
         mask = (self.t_us >= ts) & (self.t_us <= te)
         return PosesData(self.t_us[mask], self.rots[mask], self.ps[mask])
 
-    def interpolate(self, t_new_us: NDArray, bounds_error: bool = False):
+    def interpolate(self, t_new_us: NDArray, bounds_error: bool = False) -> "PosesData":
         rots = slerp_rotation(self.rots, self.t_us, t_new_us)
         trans = interpolate_vector3(self.ps, self.t_us, t_new_us, bounds_error)
         return PosesData(t_new_us, rots, trans)
@@ -148,6 +148,9 @@ class ImuData:
     magn: NDArray
 
     frame: Frame = "local"
+    # 补充内容
+    # acce_bias: NDArray = np.zeros(0)
+    # gyro_bias: NDArray = np.zeros(0)
 
     def __getitem__(self, idx):
         return ImuData(
@@ -163,7 +166,7 @@ class ImuData:
         return self.t_us.__len__()
 
     @staticmethod
-    def from_raw(raw: NDArray):
+    def from_raw(raw: NDArray) -> "ImuData":
         assert raw.shape[1] >= 12, f"Invalid raw data shape: {raw.shape}"
         gyro = raw[:, 1:4]
         acce = raw[:, 4:7]
@@ -178,7 +181,7 @@ class ImuData:
         return ImuData(t_us, gyro, acce, ahrs, magn)
 
     @staticmethod
-    def from_csv(path: Path):
+    def from_csv(path: Path) -> "ImuData":
         raw = pd.read_csv(path).dropna().to_numpy()
         return ImuData.from_raw(raw)
 
@@ -186,7 +189,7 @@ class ImuData:
         self,
         t_new_us: NDArray,
         bounds_error: bool = False,
-    ):
+    ) -> "ImuData":
         acce = interpolate_vector3(self.acce, self.t_us, t_new_us, bounds_error)
         gyro = interpolate_vector3(self.gyro, self.t_us, t_new_us, bounds_error)
         ahrs = slerp_rotation(self.ahrs, self.t_us, t_new_us)
@@ -200,7 +203,8 @@ class ImuData:
         acce = rots.apply(self.acce)
         gyro = rots.apply(self.gyro)
         magn = rots.apply(self.magn)
-        return ImuData(self.t_us, gyro, acce, rots, magn, frame="global")
+        ahrs = rots * self.ahrs
+        return ImuData(self.t_us, gyro, acce, ahrs, magn, frame="global")
 
     def get_time_range(self, time_range: tuple[float | None, float | None]):
         ts, te = self.t_us[0], self.t_us[-1]
@@ -217,6 +221,10 @@ class ImuData:
             self.magn[m],
             self.frame,
         )
+
+    def to_poses(self) -> PosesData:
+        ps = np.zeros((len(self.t_us), 3))
+        return PosesData(self.t_us, self.ahrs, ps)
 
 
 class GroundTruthData(PosesData):
@@ -349,23 +357,17 @@ class UnitData:
 
         self._imu_path = base_dir / "imu.csv"
         self._cam_path = base_dir / "cam.csv"
-        self.__gt_path_1 = base_dir / "rtab.csv"
-        self.__gt_path_2 = base_dir / "gt.csv"
-        if not self.__gt_path_1.exists():
-            self._gt_path = self.__gt_path_2
-        # 两种文件均不存在
-        if not self._gt_path.exists():
-            # 生成gt文件
-            db_file = RTABData.get_db_file(base_dir)
+        self._gt_path = base_dir / "gt.csv"
+
+        # 读取真值
+        db_file = RTABData.get_db_file(base_dir)
+        if db_file is not None:
+            # 两种文件均不存在
             rtab_data = RTABData(db_file)
+
+            rtab_data.transform_local()
             rtab_data.save_csv(self._gt_path)
             print(f"Generated {self._gt_path}")
-
-        self._gt_path_opt = base_dir / "opt.csv"
-        if not self._gt_path_opt.exists():
-            db_file = RTABData.get_db_file(base_dir)
-            rtab_data = RTABData(db_file)
-            rtab_data.save_csv(self._gt_path_opt, using_opt=True)
 
         self._fusion_path = base_dir / "fusion.csv"
         self.has_fusion = self._fusion_path.exists()
@@ -393,7 +395,7 @@ class UnitData:
         # 空间变换
         gt_data.transform_local(self.calib_data.tf_sg_local.inverse())
         # gt_data.transform_global(self.calib_data.tf_sg_global)
-        gt_data.transform_global(gt_data.get_pose(0).get_yaw_rot().inverse())
+        gt_data.transform_global(gt_data.get_pose(0).get_yaw_pose().inverse())
 
         # 数据对齐
         t_new_us = get_time_series([imu_data.t_us, gt_data.t_us])

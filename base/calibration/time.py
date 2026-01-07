@@ -31,7 +31,7 @@ def match21(
     *,
     time_range=(0, 50),
     resolution=100,
-):
+) -> int:
     # 分辨率不能大于时间序列的采样率，否则没有插值的意义
     rate = min(cs1.rate, cs2.rate)
     resolution = min(resolution, rate)

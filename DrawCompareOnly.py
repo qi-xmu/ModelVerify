@@ -26,12 +26,10 @@ from scipy.spatial.transform import Rotation
 
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
-from base.binary import SensorFusion
 from base.calibration import space, time
 from base.datatype import (
     CameraData,
     DeviceDataset,
-    FusionData,
     GroundTruthData,
     ImuData,
     Pose,
@@ -60,7 +58,7 @@ def main():
     # regen_fusion = dap.regen
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
-        model_names = ["model_tlio_mi_hw_1216"]
+        model_names = ["model_tlio_mi_hw_denoise_1224"]
 
     models_path = "models"
     if dap.args.models_path is not None:
@@ -73,16 +71,16 @@ def main():
 
     def action(ud: UnitData):
         # NOTE: sensor fusion 生成数据
-        sf = SensorFusion(ProjectPath)
-        model = nets[0].model_path.absolute()
-        res_dir = sf.unit_run(ud, model=model)
-        fusion_data = FusionData.from_csv(res_dir)
-        # fusion_data = result_data
+        # sf = SensorFusion(ProjectPath)
+        # model = nets[0].model_path.absolute()
+        # res_dir = sf.unit_run(ud, model=model, config_name="ABR-AL60_NOCALB")
+        # fusion_data = FusionData.from_csv(res_dir)
 
         imu_data = ImuData.from_csv(ud._imu_path)
         gt_data = GroundTruthData.from_csv(ud._gt_path)
         camera_data = CameraData.from_csv(ud._cam_path)
         result_data = CameraData.from_csv(ud.base_dir / "result.csv")
+        fusion_data = result_data
 
         # 完成时间校准
         time_gc = time.match21(fusion_data, gt_data)
@@ -123,7 +121,7 @@ def main():
         # bre.send_pose_data(gt_data, "__gtc", color=[192, 72, 72])
         bre.send_pose_data(fusion_data, "Fusion", color=[72, 192, 72])
         bre.send_pose_data(camera_data, "Camera", color=[72, 72, 192])
-        bre.send_pose_data(result_data, "Reuslt", color=[192, 192, 72])
+        # bre.send_pose_data(result_data, "Reuslt", color=[192, 192, 72])
 
         # 模型推理
         runner = DataRunner(ud, Data, using_gt=True, has_init_rerun=True)
