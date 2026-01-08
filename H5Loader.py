@@ -80,4 +80,4 @@ class H5Loader:
 if __name__ == "__main__":
     # 探索文件结构
     h5_loader = H5Loader(main)
-    # h5_loader.convert_all()
+    h5_loader.convert_all()

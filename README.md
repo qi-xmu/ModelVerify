@@ -1,5 +1,7 @@
 # ModelVerify
 
+> **文档更新日期：2026-01-08**
+
 一个用于验证和测试惯性导航模型的Python工具包。
 
 ## 功能特性
@@ -9,6 +11,29 @@
 - 🎯 **批量验证**: 支持单个数据单元和整个数据集的批量模型验证
 - 📈 **可视化**: 集成Rerun SDK进行数据可视化
 - 🔧 **灵活配置**: 支持命令行参数配置，可自定义模型和数据路径
+- 📚 **完整文档**: 提供详细的API文档和使用示例
+
+## 📚 文档
+
+查看完整文档以获取更多信息：
+
+- 📋 [文档中心](docs/README.md) - 文档导航和学习路径
+- 🚀 [快速参考](docs/QUICKSTART.md) - 常用命令和API速查手册
+- 📖 [详细使用指南](docs/USAGE.md) - 完整的数据格式说明和API使用教程
+- 📚 [API参考文档](docs/API.md) - 所有类和函数的详细API文档
+
+### 核心教程
+
+- 🔧 [数据准备](docs/USAGE.md#数据准备) - 数据格式和标定说明
+- 🧠 [模型推理](docs/USAGE.md#模型推理) - 模型加载和预测流程
+- 📊 [结果评估](docs/USAGE.md#结果评估) - ATE/APE/RPE等评估指标
+- 🎨 [可视化](docs/USAGE.md#可视化) - 使用Rerun进行数据可视化
+
+### 高级主题
+
+- 🚀 [高级用法](docs/USAGE.md#高级用法) - 最佳实践和自定义方法
+- ❓ [常见问题](docs/USAGE.md#常见问题) - 问题排查和解决方案
+
 
 ## 安装
 
@@ -42,6 +67,16 @@ python main.py -d <dataset_path> -m model1.pt model2.pt
 python main.py -u <unit_path> -m model1.pt --using_ahrs
 ```
 
+### 📚 更多文档
+
+查看 [详细使用指南](docs/USAGE.md) 获取更多信息：
+
+- 📖 完整的数据格式说明
+- 🔧 详细的API使用示例
+- 📊 结果评估与可视化教程
+- 🚀 高级用法和最佳实践
+- ❓ 常见问题解答
+
 ### 参数说明
 
 - `-u, --unit`: 指定单个数据单元路径
@@ -61,8 +96,11 @@ ModelVerify/
 │   ├── device.py        # 设备配置
 │   ├── interpolate.py   # 数据插值
 │   ├── model.py         # 模型加载与预测
-│   ├── predict.py       # 预测逻辑
-│   └── rerun_ext.py     # Rerun扩展
+│   ├── evaluate.py      # 性能评估
+│   ├── rerun_ext.py     # Rerun扩展
+│   └── calibration/     # 标定模块
+├── docs/                # 详细文档
+│   └── USAGE.md         # 使用指南
 ├── datasets/            # 数据集目录
 └── results/             # 结果输出目录
 ```
@@ -111,37 +149,43 @@ measurement, covariance = network.predict(input_data)
 ### 1. 单模型验证
 
 ```python
-from base.model import ModelLoader, InerialNetwork
+from base.model import ModelLoader, DataRunner, InertialNetworkData
 from base.datatype import UnitData
-from base.predict import DataRunner
 
 # 加载模型
 loader = ModelLoader("/path/to/models")
-models = loader.get_by_names(["model.pt"])
+model = loader.get_by_name("model.pt")
 
 # 加载数据
 data = UnitData("/path/to/unit")
 
 # 运行预测
-runner = DataRunner(data, InerialNetworkData.set_step(20))
-runner.predict_batch(models)
+runner = DataRunner(data, InertialNetworkData.set_step(20))
+runner.predict(model)
 ```
 
 ### 2. 数据集批量验证
 
 ```python
 from base.datatype import DeviceDataset
+from base.model import ModelLoader, DataRunner, InertialNetworkData
 
 # 加载数据集
 dataset = DeviceDataset("/path/to/dataset")
 
+# 加载模型
+loader = ModelLoader("/path/to/models")
+models = loader.get_by_names(["model1.pt", "model2.pt"])
+
 # 对每个数据单元进行验证
 for data in dataset:
-    runner = DataRunner(data, InerialNetworkData.set_step(10))
+    runner = DataRunner(data, InertialNetworkData.set_step(10))
     runner.predict_batch(models)
 ```
 
 ## 开发指南
+
+详细的开发指南请参考 [使用指南](docs/USAGE.md)。
 
 ### 添加新模型
 
