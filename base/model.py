@@ -389,7 +389,7 @@ class InertialNetworkData:
                 net_out = net.predict(block_rot)
                 net_out = yaw_rot.inv().apply(net_out[0]), net_out[1]
                 _pose = results[i].add(net_out, ref_pose)
-                print(f"{net.name}-{self.bc}: {_pose.p}")
+                # print(f"{net.name}-{self.bc}: {_pose.p}")
 
         return results
 

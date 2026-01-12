@@ -20,7 +20,7 @@
 """
 
 from base.args_parser import DatasetArgsParser
-from base.datatype import DeviceDataset, UnitData
+from base.datatype import DeviceDataset, GroundTruthData, ImuData, UnitData
 from base.model import DataRunner, InertialNetworkData, ModelLoader
 
 
@@ -35,7 +35,7 @@ def main():
     time_range = dap.args.time_range
     models = dap.args.models
     if models is None or len(models) == 0:
-        models = ["model_tlio_mi_hw_1204"]
+        models = ["model_tlio_mi_hw_1216"]
 
     models_path = "models"
     if dap.args.models_path is not None:
@@ -45,8 +45,13 @@ def main():
     Data = InertialNetworkData.set_step(20)
     if dap.unit:
         # 数据
-        data = UnitData(dap.unit)
-        runner = DataRunner(data, Data, time_range=time_range, using_gt=using_gt)
+        ud = UnitData(dap.unit, using_ext=False)
+        ud.imu_data = ImuData.from_csv(ud._imu_path)
+        # ud.gt_data = ud.imu_data.to_poses()
+        ud.gt_data = GroundTruthData.from_csv(ud._gt_path)
+
+        ud.has_fusion = False
+        runner = DataRunner(ud, Data, time_range=time_range, using_gt=using_gt)
         runner.predict_batch(loader.get_by_names(models))
 
     elif dap.dataset:

@@ -118,6 +118,10 @@ class PosesData:
         self.rots = tf.rot * self.rots
         self.ps = tf.p + tf.rot.apply(self.ps)
 
+    def reset_start(self):
+        """重置出发点"""
+        self.ps -= self.ps[0]
+
     @property
     def rate(self):
         return float(1e6 / np.mean(np.diff(self.t_us)))
@@ -341,6 +345,7 @@ class DataCheck:
 class UnitData:
     imu_data: ImuData
     gt_data: PosesData
+    opt_data: PosesData
     fusion_data: PosesData
     check_data: DataCheck
     calib_data: CalibrationData
@@ -358,6 +363,7 @@ class UnitData:
         self._imu_path = base_dir / "imu.csv"
         self._cam_path = base_dir / "cam.csv"
         self._gt_path = base_dir / "gt.csv"
+        self._opt_path = base_dir / "opt.csv"
 
         # 读取真值
         db_file = RTABData.get_db_file(base_dir)
@@ -367,7 +373,7 @@ class UnitData:
 
             rtab_data.transform_local()
             rtab_data.save_csv(self._gt_path)
-            print(f"Generated {self._gt_path}")
+            rtab_data.save_csv(self._opt_path, using_opt=True)
 
         self._fusion_path = base_dir / "fusion.csv"
         self.has_fusion = self._fusion_path.exists()
@@ -381,6 +387,7 @@ class UnitData:
     def load_data(self):
         imu_data = ImuData.from_csv(self._imu_path)
         gt_data = GroundTruthData.from_csv(self._gt_path)
+        opt_data = GroundTruthData.from_csv(self._opt_path)
         if self.has_fusion:
             fusion_data = FusionData.from_csv(self._fusion_path)
             self.fusion_data = fusion_data

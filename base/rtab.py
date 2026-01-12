@@ -112,6 +112,7 @@ class RTABData:
         self.opt_ps = self.node_ps
 
     def load_opt_data(self):
+        print("Loading optimized data...")
         # 查询Admin表中的opt_poses数据
         admin_opt_poses = self.cursor.execute(
             "SELECT opt_poses FROM Admin WHERE opt_poses IS NOT NULL"

@@ -5,7 +5,6 @@
 
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
-from base.calibration import time
 from base.datatype import (
     DeviceDataset,
     GroundTruthData,
@@ -27,7 +26,7 @@ def main():
     # regen_fusion = dap.regen
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
-        model_names = ["model_tlio_mi_hw_1216"]
+        model_names = ["model_resnet_0111_96"]
 
     models_path = "models"
     if dap.args.models_path is not None:
@@ -49,13 +48,6 @@ def main():
         t_new_us = get_time_series(ts_us)
         ud.gt_data = gt_data.interpolate(t_new_us)
         ud.imu_data = imu_data.interpolate(t_new_us)
-
-        # 对齐
-        time_gc = time.match21(ud.imu_data.to_poses(), gt_data)
-        gt_data.t_us += time_gc
-        # gt_data.transform_local(DefaultBodyTransform)
-        gt_data.ps -= gt_data.ps[0]
-        print(f"时间差：{time_gc}")
 
         # 获取共同的时间窗口
         ts_us = []

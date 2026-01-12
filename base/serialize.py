@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .datatype import GroundTruthData, ImuData
+from .datatype import GroundTruthData, ImuData, PosesData
 
 
 class TypeHeader:
@@ -36,18 +36,42 @@ class TypeHeader:
 
 
 class Serializer:
-    def __init__(self, imu_data: ImuData, gt_data: GroundTruthData): ...
     def save(self, path: Path | str): ...
 
 
-class UnitSerializer(Serializer):
-    def __init__(self, imu_data: ImuData, gt_data: GroundTruthData):
-        self.imu_data = imu_data
-        self.gt_data = gt_data
+class PosesDataSerializer(Serializer):
+    def __init__(self, data: PosesData):
+        self.data = data
 
-        pass
+    def save(self, path: Path | str):
+        path = Path(path)
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True)
 
-    def imu_saver(self, path: Path, data: ImuData):
+        if path.exists():
+            print(f"File {path} already exists.")
+            return
+
+        data = self.data
+        raw = np.hstack(
+            [
+                data.t_us.reshape(-1, 1),
+                data.ps,
+                data.rots.as_quat(scalar_first=True),
+            ]
+        )
+        header = (
+            TypeHeader().add(TypeHeader.t_us).add(TypeHeader.posi).add(TypeHeader.quat)
+        ).finish()
+        pd.DataFrame(raw, columns=header).to_csv(path, index=False, float_format="%.6f")  # type:ignore
+
+
+class ImuDataSerializer(Serializer):
+    def __init__(self, data: ImuData):
+        self.data = data
+
+    def save(self, path: Path | str):
+        data = self.data
         raw = np.hstack(
             [
                 data.t_us.reshape(-1, 1),
@@ -69,18 +93,11 @@ class UnitSerializer(Serializer):
         ).finish()
         pd.DataFrame(raw, columns=header).to_csv(path, index=False, float_format="%.6f")  # type:ignore
 
-    def gt_saver(self, path: Path, data: GroundTruthData):
-        raw = np.hstack(
-            [
-                data.t_us.reshape(-1, 1),
-                data.ps,
-                data.rots.as_quat(scalar_first=True),
-            ]
-        )
-        header = (
-            TypeHeader().add(TypeHeader.t_us).add(TypeHeader.posi).add(TypeHeader.quat)
-        ).finish()
-        pd.DataFrame(raw, columns=header).to_csv(path, index=False, float_format="%.6f")  # type:ignore
+
+class UnitSerializer(Serializer):
+    def __init__(self, imu_data: ImuData, gt_data: PosesData):
+        self.imu_data = imu_data
+        self.gt_data = gt_data
 
     def save(self, path: Path | str):
         path = Path(path)
@@ -93,8 +110,8 @@ class UnitSerializer(Serializer):
         imu_path = path / "imu.csv"
         gt_path = path / "gt.csv"
 
-        self.imu_saver(imu_path, self.imu_data)
-        self.gt_saver(gt_path, self.gt_data)
+        ImuDataSerializer(self.imu_data).save(imu_path)
+        PosesDataSerializer(self.gt_data).save(gt_path)
 
         print(f"Save to: {path}")
 
