@@ -50,8 +50,6 @@ def main():
     dap.parse()
 
     # regen_fusion = dap.regen
-    assert dap.unit is not None
-    unit_path = Path(dap.unit)
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
         model_names = ["model_resnet_0111_96"]
@@ -107,6 +105,7 @@ def main():
         return netres, evaluator
 
     if dap.unit:
+        unit_path = Path(dap.unit)
         # 使用 网络名称
         res_dir = EvalDir / f"{nets[0].name}"
         res_dir.mkdir(parents=True, exist_ok=True)
