@@ -5,7 +5,6 @@
 
 """
 
-import pickle
 from pathlib import Path
 
 import base.rerun_ext as bre
@@ -15,6 +14,7 @@ from base.datatype import DeviceDataset, UnitData
 from base.draw.CDF import plot_one_cdf
 from base.evaluate import Evaluation
 from base.model import DataRunner, InertialNetworkData, ModelLoader
+from base.obj import Obj
 
 # 默认结果输出路径
 EvalDir = Path("/Users/qi/Resources/results")
@@ -51,10 +51,9 @@ def main():
         # 如果已经计算过
         if obj_path.exists():
             print(f"> 已存在结果：{obj_path}")
-            with open(obj_path, "rb") as f:
-                netres, evaluator = pickle.load(f)
-                assert isinstance(netres, list)
-                assert isinstance(evaluator, Evaluation)
+            netres, evaluator = Obj.load(obj_path)
+            assert isinstance(netres, list)
+            assert isinstance(evaluator, Evaluation)
         else:
             # 加载数据
             ud.load_data(using_opt=True)
@@ -71,8 +70,7 @@ def main():
             evaluator.print()
 
             # 保存结果
-            with open(obj_path, "wb") as f:
-                pickle.dump((netres, evaluator), f)
+            Obj.save((netres, evaluator), obj_path)
 
         # 绘制 CDF
         model_cdf = Evaluation.get_cdf(netres[0].err_list, nets[0].name)
@@ -81,9 +79,7 @@ def main():
         evaluator.save(unit_out_dir / "Eval.json")
 
         # 分析数据集
-
         ua = UnitAnalysis(ud.name, netres[0].gt_list)
-
         ua.analyze(res_dir / ud.name)
 
         return ua
