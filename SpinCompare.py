@@ -29,7 +29,6 @@ from base.args_parser import DatasetArgsParser
 from base.binary import SensorFusion
 from base.calibration import space, time
 from base.datatype import (
-    CameraData,
     DeviceDataset,
     FusionData,
     GroundTruthData,
@@ -44,11 +43,9 @@ from base.model import DataRunner, InertialNetworkData, ModelLoader
 
 DefaultBodyRotation = Rotation.from_rotvec([0, -90, 0], degrees=True)
 DefaultBodyTransform = Pose(DefaultBodyRotation, np.zeros(3))
-
-
-class DrawUnitData(UnitData):
-    def load_data(self):
-        pass
+ProjectPath = (
+    "/Users/qi/Codespace/Android/NAVIO/navio_sdk/src/main/cpp/SensorFusionAndroid"
+)
 
 
 def main():
@@ -75,7 +72,7 @@ def main():
     def action(ud: UnitData):
         # sensor fusion 生成数据
         if regen_fusion:
-            sf = SensorFusion()
+            sf = SensorFusion(ProjectPath)
             res_dir = sf.unit_run(ud, model=model)
         else:
             res_dir = ud.base_dir / "fusion.csv"
@@ -108,14 +105,14 @@ def main():
         # fusion_data = fusion_data.interpolate(t_new_us)
 
         # 可视化
-        bre.rerun_init(ud.name)
+        bre.RerunView().add_spatial_view().send(ud.name)
         bre.send_pose_data(ud.gt_data, "Groundtruth", color=[192, 72, 72])
         bre.send_pose_data(gt_data, "__gtc", color=[192, 72, 72])
         bre.send_pose_data(fusion_data, "Fusion", color=[72, 192, 72])
 
         # 模型推理
         runner = DataRunner(ud, Data, using_gt=True, has_init_rerun=True)
-        net_results = runner.predict_batch_rot(nets)
+        net_results = runner.predict_batch(nets)
         netres_data = PosesData.from_list(net_results[0].pose_list)
 
         # 计算 ATE
@@ -126,11 +123,11 @@ def main():
         evaluator.save(ud.base_dir / "eval.json")
 
     if dap.unit:
-        ud = UnitData(dap.unit, using_ext=False)
+        ud = UnitData(dap.unit)
         action(ud)
     elif dap.dataset:
         dataset_path = dap.dataset
-        datas = DeviceDataset(dataset_path, False)
+        datas = DeviceDataset(dataset_path)
         for ud in datas:
             action(ud)
     else:

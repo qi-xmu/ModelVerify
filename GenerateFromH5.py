@@ -1,3 +1,72 @@
+"""
+MEIO-Net 数据集转换工具
+
+本模块用于将 MEIO-Net 数据集从 HDF5 格式转换为项目标准化的数据格式。
+
+=== 数据集信息 ===
+数据集名称：MEIO-Net Dataset
+数据集地址：https://zenodo.org/records/18149105
+相关论文：https://ieeexplore.ieee.org/document/11251007
+
+引用信息：
+X. Sun et al., "MEIO-Net: A Motion-Aware Early-Exit Inertial Odometry Network for Efficient
+Pedestrian Dead Reckoning (PDR)," in IEEE Internet of Things Journal, doi: 10.1109/JIOT.2025.3633690.
+
+关键词：行人航位推算（PDR）、惯性导航、物联网、深度学习、计算效率
+
+=== 数据集结构 ===
+HDF5 文件包含以下分组：
+- train: 训练数据集
+- test: 测试数据集
+- valid: 验证数据集
+- para: 参数配置（如果有）
+
+每个分组包含多个序列，每个序列包含以下字段：
+- acc: 加速度计数据 (m/s²)
+- acc_bias: 加速度计偏差
+- gyr: 陀螺仪数据 (rad/s)
+- gyr_bias: 陀螺仪偏差
+- mag: 磁力计数据
+- motion_qua: 运动质量指标
+- pos: 位置信息 (m)
+- qua: 姿态四元数 (scalar-first format: w, x, y, z)
+- ts: 时间戳 (s)
+
+=== 转换功能 ===
+本模块提供以下功能：
+1. 从 HDF5 文件中读取 IMU 数据和地面真值数据
+2. 自动去除传感器偏差（可选）
+3. 将时间戳转换为微秒格式（uint64）
+4. 将四元数转换为 scipy Rotation 对象
+5. 保存为两种格式：
+   - Base 格式：项目基础数据格式
+   - TLIO 格式：TLIO 算法专用格式
+
+=== 使用示例 ===
+    # 转换单个文件
+    loader = H5Loader("/path/to/dataset.h5")
+    loader.convert_all()
+
+    # 生成的文件结构：
+    # /path/to/dataset/
+    #   ├── train/
+    #   │   ├── sequence_1/
+    #   │   └── sequence_2/
+    #   ├── test/
+    #   └── valid/
+    #
+    # /path/to/TLIO_dataset/
+    #   ├── train/
+    #   ├── test/
+    #   └── valid/
+
+=== 注意事项 ===
+1. 时间戳从秒转换为微秒（乘以 1e6）
+2. 四元数使用 scalar-first 格式 (w, x, y, z)
+3. 默认启用偏差移除（remove_bias=True）
+4. 生成的目录结构与原始 HDF5 文件的分组结构一致
+"""
+
 from pathlib import Path
 
 import h5py

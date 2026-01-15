@@ -161,6 +161,10 @@ class RerunView:
         return self
 
 
+def rerun_init(name: str):
+    RerunView().add_spatial_view().send(name)
+
+
 def log_coordinate(
     entity_path: str,
     view_coordinate: rr.AsComponents = rr.ViewCoordinates.RIGHT_HAND_Z_UP,

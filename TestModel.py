@@ -20,7 +20,7 @@
 """
 
 from base.args_parser import DatasetArgsParser
-from base.datatype import DeviceDataset, GroundTruthData, ImuData, UnitData
+from base.datatype import DeviceDataset, ImuData, UnitData
 from base.model import DataRunner, InertialNetworkData, ModelLoader
 
 
@@ -45,12 +45,11 @@ def main():
     Data = InertialNetworkData.set_step(20)
     if dap.unit:
         # 数据
-        ud = UnitData(dap.unit, using_ext=False)
+        ud = UnitData(dap.unit)
         ud.imu_data = ImuData.from_csv(ud._imu_path)
         ud.gt_data = ud.imu_data.to_poses()
         # ud.gt_data = GroundTruthData.from_csv(ud._gt_path)
 
-        ud.has_fusion = False
         runner = DataRunner(ud, Data, time_range=time_range, using_gt=using_gt)
         runner.predict_batch(loader.get_by_names(models))
 

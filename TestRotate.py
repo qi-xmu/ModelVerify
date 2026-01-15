@@ -74,14 +74,14 @@ def main():
         evaluator = Evaluation(ud.gt_data)
         evaluator.get_eval(netres_data, "netres")
         evaluator.print()
-        evaluator.save(ud.base_dir / "eval.json")
+        # evaluator.save(ud.base_dir / "eval.json")
 
     if dap.unit:
-        ud = UnitData(dap.unit, using_ext=False)
+        ud = UnitData(dap.unit)
         action(ud)
     elif dap.dataset:
         dataset_path = dap.dataset
-        datas = DeviceDataset(dataset_path, False)
+        datas = DeviceDataset(dataset_path)
         for ud in datas:
             action(ud)
     else:
