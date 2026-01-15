@@ -133,7 +133,7 @@ def main():
 
         # 绘制总体的结果
         model_cdf = Evaluation.get_cdf(all_errors, nets[0].name)
-        plot_one_cdf(model_cdf, res_dir / "CDF.png")
+        plot_one_cdf(model_cdf, res_dir / "CDF.png", show=False)
 
 
 if __name__ == "__main__":
