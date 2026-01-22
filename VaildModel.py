@@ -32,7 +32,6 @@
 from pathlib import Path
 
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
@@ -44,9 +43,6 @@ from base.evaluate import Evaluation
 from base.model import DataRunner, InertialNetworkData, ModelLoader, NetworkResult
 from base.obj import Obj
 from base.utils import angle_between_vectors, angle_with_x_axis
-
-# 默认结果输出路径
-EvalDir = Path("/Users/qi/Resources/results")
 
 
 def main():
@@ -65,11 +61,12 @@ def main():
     if dap.args.models_path is not None:
         models_path = dap.args.models_path
 
+    # 结果输出路径
+    EvalDir = Path(dap.output) if dap.output else Path("results")
+
     loader = ModelLoader(models_path)
     Data = InertialNetworkData.set_step(20)
     nets = loader.get_by_names(model_names)
-
-    fix_rot = Rotation.from_rotvec([0, 0, 8.11], degrees=True)
 
     def action(ud: UnitData, res_dir: Path):
         print(f"> Eval {ud.name}")
@@ -178,7 +175,6 @@ def main():
             nr = nr_list[0]
 
             for meas, gt in zip(nr.meas_list, nr.gt_list):
-                meas = fix_rot.apply(meas)
                 angle = angle_with_x_axis(gt)
                 angle_error = angle_between_vectors(meas, gt)
 
@@ -202,16 +198,15 @@ def main():
         for nr in netres_list:
             assert isinstance(nr, NetworkResult)
             meas = np.array(nr.meas_list)
-            meas = fix_rot.apply(meas)
-
             gt = np.array(nr.gt_list)
+
             err = meas - gt
             err_norm = np.linalg.norm(err, axis=1)
             all_errors.extend(err_norm)
 
         # 绘制总体的结果
         model_cdf = Evaluation.get_cdf(all_errors, nets[0].name)
-        plot_one_cdf(model_cdf, res_dir / "_CDF.png", show=True)
+        plot_one_cdf(model_cdf, res_dir / "CDF.png", show=True)
 
 
 if __name__ == "__main__":
