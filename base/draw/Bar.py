@@ -13,8 +13,8 @@ class Bar(Base2D):
         y: NDArray | list[float],
         x_label: str,
         y_label: str,
-        x: NDArray | list[float] | None = None,
         title: str = "",
+        x: NDArray | list[float] | None = None,
     ):
         if x is None:
             x = np.arange(len(y))
@@ -23,7 +23,7 @@ class Bar(Base2D):
 
         y = np.array(y)
 
-        super().__init__(x, y, x_label, y_label, title)
+        super().__init__(x, y, title, x_label, y_label)
 
     @staticmethod
     def from_dict(data: dict):
@@ -38,7 +38,6 @@ class Bar(Base2D):
     def draw(
         self,
         save_dir: Path | None = None,
-        show: bool = True,
     ):
         """绘制柱状图,并标注平均值和中位数的虚线"""
         fig, ax = plt.subplots(figsize=(10, 6))

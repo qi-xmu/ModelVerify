@@ -185,6 +185,26 @@ class ImuData:
 
     @staticmethod
     def from_raw(raw: NDArray) -> "ImuData":
+        """
+        从原始数组创建ImuData
+
+        Args:
+            raw: 原始数据数组，形状为 [N, M]，其中:
+                - N: 时间步数
+                - M >= 12: 数据列数
+                  - col 0: 时间戳偏移量 [us]
+                  - col 1-3: 陀螺仪数据 [rad/s] (x, y, z)
+                  - col 4-6: 加速度计数据 [m/s^2] (x, y, z)
+                  - col 7-10: AHRS四元数 [qw, qx, qy, qz]
+                  - col 11: 时间戳基准值 [us]
+                  - col 12-14: 磁力计数据 [可选] (x, y, z)
+
+        Returns:
+            ImuData对象
+
+        Raises:
+            AssertionError: 当数据列数少于12列时
+        """
         assert raw.shape[1] >= 12, f"Invalid raw data shape: {raw.shape}"
         gyro = raw[:, 1:4]
         acce = raw[:, 4:7]
@@ -394,17 +414,10 @@ class UnitData:
     gt_data: PosesData
     opt_data: PosesData
 
-    has_opt: bool
-    using_ext: bool = False
-
     def __init__(self, base_dir: Path | str):
         self.base_dir = Path(base_dir)
         self.name = self.base_dir.name
-
-        # 设备名称
-        spl = self.name.split("_")
-        device_name = spl[2] if len(spl) > 2 else "default"
-        self.device_name = device_name
+        self._get_deivce_from_name()
 
         self._imu_path = self.base_dir / "imu.csv"
         self._cam_path = self.base_dir / "cam.csv"
@@ -412,6 +425,13 @@ class UnitData:
         self._opt_path = self.base_dir / "opt.csv"
 
         self.has_opt = self._opt_path.exists()
+        self.using_ext = False
+
+    def _get_deivce_from_name(self):
+        # 设备名称
+        spl = self.name.split("_")
+        device_name = spl[2] if len(spl) > 2 else "default"
+        self.device_name = device_name
 
     def load_data(self, using_opt=False):
         self.imu_data = ImuData.from_csv(self._imu_path)
@@ -490,6 +510,9 @@ class DeviceDataset:
 
     def __getitem__(self, index):
         return self.units[index]
+
+    def __iter__(self):
+        return iter(self.units)
 
     def __len__(self):
         return len(self.units)

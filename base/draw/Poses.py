@@ -116,7 +116,7 @@ def draw_trajectory_2d_compare(
     start_marker_size: float = 10,
     end_marker_size: float = 10,
     figsize: tuple[float, float] = (10, 10),
-    save_path: str | None = None,
+    save_path: Path | None = None,
     dpi: int = 300,
 ):
     """

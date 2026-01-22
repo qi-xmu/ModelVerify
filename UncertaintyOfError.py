@@ -1,8 +1,30 @@
 #!/usr/bin/env python3
 """
-分析数据集成分
+不确定性误差分析模块
 
+分析神经网络预测的协方差（不确定性估计）与实际误差之间的关系。
 
+主要功能：
+1. 对3轴数据（X、Y、Z）进行协方差-误差分析
+2. 计算皮尔逊相关系数评估协方差与误差的相关性
+3. 可视化展示协方差与误差的散点图及统计信息
+
+使用方法：
+    python UncertaintyOfError.py -m <模型名称> --dataset <数据集路径>
+    python UncertaintyOfError.py -m <模型名称> --unit <单个数据路径>
+
+输出：
+    - covariance_error_analysis_3axis.png: 3轴协方差-误差分析可视化图
+    - 结果保存在 results/<模型名>_<设备名>/ 目录下
+
+类：
+    NetworkResultAnalysis: 分析协方差与误差的关系，生成可视化图表
+
+依赖：
+    - numpy: 数值计算
+    - matplotlib: 绘图
+    - scipy.stats.pearsonr: 相关性分析
+    - tqdm: 进度条
 """
 
 from pathlib import Path
@@ -10,6 +32,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
+from tqdm import tqdm
 
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
@@ -17,9 +40,6 @@ from base.datatype import DeviceDataset, UnitData
 from base.evaluate import Evaluation
 from base.model import DataRunner, InertialNetworkData, ModelLoader, NetworkResult
 from base.obj import Obj
-
-# 默认结果输出路径
-EvalDir = Path("/Users/qi/Resources/results")
 
 
 class NetworkResultAnalysis:
@@ -141,6 +161,9 @@ def main():
     if dap.args.models_path is not None:
         models_path = dap.args.models_path
 
+    # 结果输出路径
+    EvalDir = Path(dap.args.output) if dap.args.output else Path("results")
+
     loader = ModelLoader(models_path)
     Data = InertialNetworkData.set_step(20)
     nets = loader.get_by_names(model_names)
@@ -179,9 +202,6 @@ def main():
             Obj.save((nr_list, evaluator), obj_path)
 
         nr = nr_list[0]
-        # 分析
-        # nra = NetworkResultAnalysis(nr)
-        # nra.analyze_uc_err()
         return nr
 
     if dap.unit:
@@ -199,12 +219,10 @@ def main():
         # 使用 网络名称 + 设备名称
         res_dir = EvalDir / f"{nets[0].name}_{datas.device_name}"
         res_dir.mkdir(parents=True, exist_ok=True)
-        # 存储结果
-        # da_path = res_dir / f"{DatasetAnalysis._obj_name}.pkl"
 
         all_nr = NetworkResult()
 
-        for ud in datas:
+        for ud in tqdm(datas, desc="Evaluating"):
             nr = action(ud, res_dir)
             all_nr.meas_cov_list.extend(nr.meas_cov_list)
             all_nr.gt_list.extend(nr.gt_list)

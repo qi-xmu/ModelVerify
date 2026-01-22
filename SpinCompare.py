@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""
-这是一个用于可视化惯性导航网络模型结果的Python脚本。
-
-主要功能：
-1. 加载并处理IMU、相机、融合数据和真值数据
-2. 进行时间校准和坐标系对齐
-3. 提供数据可视化功能
-4. 支持多个模型的批量推理
-
-使用说明：
-1. 通过命令行参数指定要使用的模型和模型路径
-2. 可以处理单个单元数据(--unit)或整个数据集(--dataset)
-3. 可视化使用Rerun框架实现
-
-作者：qi-xmu
-版本：1.0
-
-示例用法：
-python DrawCompare.py --unit /path/to/data --models model1 model2
-python DrawCompare.py --dataset /path/to/dataset --models_path /custom/models/path
-"""
+""" """
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -131,8 +111,7 @@ def main():
         for ud in datas:
             action(ud)
     else:
-        # dap.parser.print_help()
-        pass
+        dap.parser.print_help()
 
 
 if __name__ == "__main__":

@@ -465,19 +465,22 @@ class DataRunner:
         using_gt: bool = True,
     ):
         self.ud = ud
-        assert len(self.ud.gt_data) == len(self.ud.imu_data), (
-            f"GT and IMU data length mismatch: {len(self.ud.gt_data)} != {len(self.ud.imu_data)}"
-        )
-        self.gt_data = ud.gt_data.get_time_range(time_range)
+        self.using_gt = using_gt
+        if using_gt:
+            assert len(self.ud.gt_data) == len(self.ud.imu_data), (
+                f"GT and IMU data length mismatch: {len(self.ud.gt_data)} != {len(self.ud.imu_data)}"
+            )
+            self.gt_data = ud.gt_data.get_time_range(time_range)
+
+            # 获取 gt_data 的起始位置
+            assert len(self.gt_data) > 0, f"{self.gt_data}"
+            self.init_pose = Pose.from_transform(self.gt_data.ps[0])
+
         self.imu_data = ud.imu_data.get_time_range(time_range)
 
         # 变换到global
         world_imu_gt = self.imu_data.transform(self.gt_data.rots if using_gt else None)
         self.in_data = Data(world_imu_gt)
-
-        # 获取 gt_data 的起始位置
-        assert len(self.gt_data) > 0, f"{self.gt_data}"
-        self.init_pose = Pose.from_transform(self.gt_data.ps[0])
 
         if not has_init_rerun and self.in_data.using_rerun:
             # rre.rerun_init(ud.name, imu_view_tags=["GT", "Raw"])
@@ -502,7 +505,7 @@ class DataRunner:
     def predict_batch(self, networks: list[InertialNetwork]):
         results = self.in_data.predict_usings(
             networks,
-            self.gt_data,
+            self.gt_data if self.using_gt else self.imu_data.to_poses(),
             self.test_scale,
             self.test_heading,
         )

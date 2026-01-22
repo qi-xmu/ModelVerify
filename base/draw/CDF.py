@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 def plot_one_cdf(
     cdf_data: dict,
     save_path: Path | str | None = None,
+    x_range: tuple[float, float] = (0, 1.05),
     show: bool = True,
 ):
     tag = cdf_data["tag"]
@@ -49,12 +50,13 @@ def plot_one_cdf(
     plt.ylabel("CDF", fontsize=12)
     plt.title(f"CDF of {tag}", fontsize=14)
     plt.grid(True, alpha=0.3)
-    plt.legend(fontsize=10)
+    if label:
+        plt.legend(fontsize=10)
 
     # 设置y轴范围
     plt.ylim(0, 1.05)
     # 设置最大误差为 1，超出部分不显示
-    plt.xlim(left=0, right=1)
+    plt.xlim(left=x_range[0], right=x_range[1])
 
     plt.tight_layout()
 

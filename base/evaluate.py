@@ -8,6 +8,7 @@ TODO:
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -102,18 +103,22 @@ class Evaluation:
 
     def get_eval(self, eva_poses: PosesData, tag: str):
         """
-        对比PosesData, 返回
-        ```
+        对比PosesData, 返回包含各误差指标的字典:
         {
-            "rate": rate,
-            "size": size,
-            "APE(_)": ape,
-            "ATE(m)": ate,
-            "RPE(_)": rpe,
-            "rpe_gap": gap
+            "rate": int,          # 采样率 (Hz)
+            "size": int,          # 姿态数据点数
+            "APE(_)": float,      # 绝对姿态误差均值 (rad)
+            "APE_CDF": dict,      # APE的CDF数据
+            "ATE(m)": float,      # 绝对轨迹误差均值 (m)
+            "ATE_CDF": dict,      # ATE的CDF数据
+            "RPE(_)": float,      # 相对姿态误差均值 (rad), 当time_length > rel_duration时
+            "RPE_CDF": dict,      # RPE的CDF数据, 当time_length > rel_duration时
+            "RTE(m)": float,      # 相对轨迹误差均值 (m), 当time_length > rel_duration时
+            "RTE_CDF": dict,      # RTE的CDF数据, 当time_length > rel_duration时
         }
-        ```
 
+        Returns:
+            tuple: (resdict[tag], inner[tag]), 分别为结果字典和CDF详细数据
         """
         if tag not in self.inner:
             self.inner[tag] = {}
@@ -137,8 +142,8 @@ class Evaluation:
         ate_errs = self.__get_ATE(eva_poses)
         ape = np.mean(ape_errs)
         ate = np.mean(ate_errs)
-        ape_cdf = self.get_cdf(ape_errs)
-        ate_cdf = self.get_cdf(ate_errs)
+        ape_cdf = get_cdf_from_err(ape_errs)
+        ate_cdf = get_cdf_from_err(ate_errs)
         # 记录值
         res["APE(_)"] = ape
         res["ATE(m)"] = ate
@@ -151,8 +156,8 @@ class Evaluation:
         if self.time_length > self.rel_duration:
             rpe_errs = self.__get_RPE(eva_poses)
             rte_errs = self.__get_RTE(eva_poses)
-            rpe_cdf = self.get_cdf(rpe_errs)
-            rte_cdf = self.get_cdf(rte_errs)
+            rpe_cdf = get_cdf_from_err(rpe_errs)
+            rte_cdf = get_cdf_from_err(rte_errs)
             rpe = np.mean(rpe_errs)
             rte = np.mean(rte_errs)
             # 记录值
@@ -166,40 +171,43 @@ class Evaluation:
         self.resdict[tag].update(res)
         return res, self.inner[tag]
 
-    @staticmethod
-    def get_cdf(errors: NDArray | list, tag: str = "") -> dict:
-        """
-        计算误差的累积分布函数 (CDF)
+    def get_cdf(self, tag: str, err_type: Literal["APE", "ATE", "RPE", "RTE"] = "ATE"):
+        return self.inner[tag][f"{err_type}_CDF"]
 
-        Args:
-            errors: 误差值数组
 
-        Returns:
-            包含CDF数据的字典:
-            {
-                "errors": 误差值数组,
-                "cdf": CDF值数组,
-                "percentiles": 百分位数 {50%, 90%, 95%, 99%}
-            }
-        """
-        # 计算CDF
-        errors = np.array(errors)
-        sorted_errors = np.sort(errors)
-        cdf = np.arange(1, len(sorted_errors) + 1) / len(sorted_errors)
+def get_cdf_from_err(errors: NDArray | list, tag: str = "") -> dict:
+    """
+    计算误差的累积分布函数 (CDF)
 
-        # 计算百分位数
-        percentiles = {
-            "50%": np.percentile(errors, 50),
-            "90%": np.percentile(errors, 90),
-            "95%": np.percentile(errors, 95),
-            "99%": np.percentile(errors, 99),
+    Args:
+        errors: 误差值数组
+
+    Returns:
+        包含CDF数据的字典:
+        {
+            "errors": 误差值数组,
+            "cdf": CDF值数组,
+            "percentiles": 百分位数 {50%, 90%, 95%, 99%}
         }
+    """
+    # 计算CDF
+    errors = np.array(errors)
+    sorted_errors = np.sort(errors)
+    cdf = np.arange(1, len(sorted_errors) + 1) / len(sorted_errors)
 
-        result = {
-            "tag": tag,
-            "errors": sorted_errors,
-            "cdf": cdf,
-            "percentiles": percentiles,
-        }
+    # 计算百分位数
+    percentiles = {
+        "50%": np.percentile(errors, 50),
+        "90%": np.percentile(errors, 90),
+        "95%": np.percentile(errors, 95),
+        "99%": np.percentile(errors, 99),
+    }
 
-        return result
+    result = {
+        "tag": tag,
+        "errors": sorted_errors,
+        "cdf": cdf,
+        "percentiles": percentiles,
+    }
+
+    return result

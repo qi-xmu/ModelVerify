@@ -52,7 +52,7 @@ if __name__ == "__main__":
     models_path = "Models"
     loader = ModelLoader(models_path)
 
-    net = loader.get_by_name("model_tlio_mi_hw_1216")
+    net = loader.get_by_name("0122"Î)
     if args.unit is not None:
         tlio_view(args.unit, net)
     elif args.dataset is not None:
