@@ -85,6 +85,13 @@ def main():
         gt_data = GroundTruthData.from_csv(ud._gt_path)
         opt_data = GroundTruthData.from_csv(ud._opt_path)
 
+        # 对齐
+        time_gc = time.match21(ud.imu_data.to_poses(), ud.gt_data)
+        ud.gt_data.t_us += time_gc
+        ud.gt_data.reset_start()
+        ud.opt_data.reset_start()
+        print(f"时间差：{time_gc}")
+
         # 获取共同的时间窗口
         ts_us = []
         ts_us.append(gt_data.t_us)
@@ -96,12 +103,8 @@ def main():
         ud.imu_data = imu_data.interpolate(t_new_us)
         ud.opt_data = opt_data.interpolate(t_new_us)
 
-        # 对齐
-        time_gc = time.match21(ud.imu_data.to_poses(), ud.gt_data)
-        ud.gt_data.t_us += time_gc
-        ud.gt_data.reset_start()
-        ud.opt_data.reset_start()
-        print(f"时间差：{time_gc}")
+        # 空间变换
+
 
         # 保存
         base_dir = output / ud.device_name / ud.name
@@ -109,7 +112,6 @@ def main():
         ImuDataSerializer(ud.imu_data).save(base_dir / "imu.csv")
         PosesDataSerializer(ud.gt_data).save(base_dir / "gt.csv")
         PosesDataSerializer(ud.opt_data).save(base_dir / "opt.csv")
-        # cam
         PosesDataSerializer(cam_data).save(base_dir / "cam.csv")
 
         ax = draw_trajectory_2d_compare(

@@ -43,6 +43,7 @@ from base.dataset.H5Type import (
     SequenceAttributes,
 )
 from base.datatype import DeviceDataset, UnitData
+from base.interpolate import get_time_series
 
 # 默认结果输出路径
 EvalDir = Path("/Users/qi/Resources/results")
@@ -70,7 +71,6 @@ def calculate_velocity(t_us: np.ndarray, pos: np.ndarray) -> np.ndarray:
     vel[1:-1] = (vel_mid[:-1] + vel_mid[1:]) / 2  # 平均相邻速度
     vel[0] = vel_mid[0]
     vel[-1] = vel_mid[-1]
-
     return vel
 
 
@@ -147,6 +147,14 @@ def unit_data_to_sequence(ud: UnitData) -> Sequence:
     """
     # 确保数据已加载
     ud.load_data()
+
+    # 真值和IMU插值对齐
+    ts_us = []
+    ts_us.append(ud.imu_data.t_us)
+    ts_us.append(ud.gt_data.t_us)
+    t_new_us = get_time_series(ts_us)
+    ud.imu_data = ud.imu_data.interpolate(t_new_us)
+    ud.gt_data = ud.gt_data.interpolate(t_new_us)
 
     # 计算序列属性
     num_rows = len(ud.imu_data.t_us)

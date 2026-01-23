@@ -36,12 +36,10 @@ import numpy as np
 from tqdm import tqdm
 
 from base.args_parser import DatasetArgsParser
-from base.datatype import DeviceDataset, UnitData
+from base.datatype import DeviceDataset, GroundTruthData, UnitData
 from base.draw.CDF import plot_one_cdf
 from base.draw.Poses import draw_trajectory_2d_compare
 from base.evaluate import Evaluation
-from base.model import DataRunner, InertialNetworkData, ModelLoader, NetworkResult
-from base.obj import Obj
 
 name_list = ["cam.csv", "fusion_desktop.csv"]
 
@@ -50,92 +48,59 @@ def main():
     dap = DatasetArgsParser()
     dap.parser.add_argument("-m", "--models", nargs="+", help="模型")
     dap.parser.add_argument("--models_path", type=str, help="模型文件夹")
+    dap.parser.add_argument("-n", "--name", type=str, help="名称")
     dap.parse()
 
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
         model_names = ["model_resnet_0111_96"]
 
-    models_path = "models"
-    if dap.args.models_path is not None:
-        models_path = dap.args.models_path
-
     # 结果输出路径 - 使用模型名称组合
     output = Path(dap.output) if dap.output else Path("results")
 
-    loader = ModelLoader(models_path)
-    Data = InertialNetworkData.set_step(20).no_rerun()
-    nets = loader.get_by_names(model_names)
-
-    def action(ud: UnitData, res_dir: Path):
+    def action(ud: UnitData, res_dir: Path, name: str):
         """对单个数据执行模型推理"""
         unit_out_dir = res_dir / ud.name
         unit_out_dir.mkdir(parents=True, exist_ok=True)
 
-        obj_path = res_dir / "temp" / f"action_{ud.name}.pkl"
-        obj_path.parent.mkdir(parents=True, exist_ok=True)
+        # 读取
+        eval_path = ud.base_dir / f"{name}.csv"
+        eval_pose = GroundTruthData.from_csv(eval_path)
 
-        # 加载缓存结果
-        if obj_path.exists():
-            nr_list, evaluator = Obj.load(obj_path)
-            nr = nr_list[0]
-            assert isinstance(nr, NetworkResult)
-        else:
-            # 加载数据
-            ud.load_data(using_opt=True)
-            # 模型推理
-            nr_list = DataRunner(ud, Data).predict_batch(nets)
-            evaluator = Evaluation(ud.gt_data, name=ud.name, rel_duration=1)
-            evaluator.get_eval(nr_list[0].poses, nets[0].name)
-            # 保存结果
-            Obj.save((nr_list, evaluator), obj_path)
+        ud.load_data()
+        evaluator = Evaluation(ud.gt_data, name=ud.name, rel_duration=1)
+        evaluator.get_eval(eval_pose, name)
 
-        nr = nr_list[0]
-        assert isinstance(nr, NetworkResult)
-        cdf_data = evaluator.get_cdf(nets[0].name, "RPE")
+        cdf_data = evaluator.get_cdf(name, "RTE")
 
         draw_trajectory_2d_compare(
-            [
-                nr_list[0].poses,
-                evaluator.ref_poses,
-            ],
-            labels=[
-                "Fusion",
-                "GT",
-            ],
+            [eval_pose, evaluator.ref_poses],
+            labels=["Fusion", "GT"],
             save_path=unit_out_dir / "trajectory.png",
+            show=False,
         )
         plot_one_cdf(
-            cdf_data, unit_out_dir / "PoseCDF.png", (0, np.max(cdf_data["errors"]))
+            cdf_data,
+            unit_out_dir / "PoseCDF.png",
+            (0, np.max(cdf_data["errors"])),
+            show=False,
         )
 
-        return nr_list, evaluator
-
     # 输出路径
-    res_dir = output / f"{nets[0].name}"
+    res_dir = output
     res_dir.mkdir(parents=True, exist_ok=True)
 
     if dap.unit:
         unit_path = Path(dap.unit)
         ud = UnitData(unit_path)
-
-        nr_list, evaluator = action(ud, res_dir)
+        action(ud, res_dir, dap.args.name)
 
     elif dap.dataset:
-        Data = Data.no_rerun()
         dataset_path = Path(dap.dataset)
         datas = DeviceDataset(dataset_path)
 
-        # 存储每个模型的所有误差
-        all_errors = {net.name: [] for net in nets}
-
         for ud in tqdm(datas, desc="Evaluating"):
-            for net in nets:
-                _nr = action(ud, res_dir)
-
-        # 打印统计信息
-        for name, errors in all_errors.items():
-            print(f"{name}: {len(errors)} samples, mean error: {np.mean(errors):.4f}m")
+            action(ud, res_dir, dap.args.name)
 
 
 if __name__ == "__main__":
