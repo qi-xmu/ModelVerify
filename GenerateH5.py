@@ -1,32 +1,35 @@
 #!/usr/bin/env python3
 """
-验证模型效果
+生成H5数据集
 
-验证单个模型在数据集上的效果，生成CDF图和ATE/APE/RPE等评估指标。
+将原始数据单元或数据集转换为标准化的H5格式，包含重采样数据、对齐数据和训练集划分。
 
 用法:
-    # 验证单个数据单元
-    python VaildModel.py -u <unit_path> -m model_name
+    # 处理单个数据单元
+    python GenerateH5.py -u <unit_path> -o <output_path>
 
-    # 验证整个数据集
-    python VaildModel.py -d <dataset_path> -m model_name
+    # 处理整个数据集
+    python GenerateH5.py -d <dataset_path> -o <output_path>
 
-    # 指定模型文件夹
-    python VaildModel.py -u <unit_path> -m model_name --models_path /path/to/models
+    # 指定训练集划分比例
+    python GenerateH5.py -d <dataset_path> -o <output_path> --train_ratio 0.7 --val_ratio 0.2 --test_ratio 0.1
 
 参数:
     -u, --unit: 指定单个数据单元路径
     -d, --dataset: 指定数据集路径
-    -m, --models: 指定模型文件名（支持多个）
-    --models_path: 指定模型文件夹路径（默认为"models"）
+    -o, --output: 输出H5文件路径（必需）
+    --train_ratio: 训练集比例（默认: 0.7）
+    --val_ratio: 验证集比例（默认: 0.15）
+    --test_ratio: 测试集比例（默认: 0.15）
+    --no_shuffle: 不打乱序列顺序
+    --random_seed: 随机种子（默认: 42）
 
 输出:
-    - results/<model_name>/<unit_name>/: 单个单元的结果目录
-      - CDF.png: 误差累积分布函数图
-      - Eval.json: 评估指标（ATE/APE/RPE）
-    - results/<model_name>_<device_name>/: 数据集结果目录
-      - CDF.png: 整体误差CDF图
-    - results/<model_name>/temp/: 临时结果缓存
+    - <output_path>: H5文件，包含:
+      - metadata/: 元数据（版本、序列数量、总时长、H5Type代码）
+      - sequences/: 各序列数据（重采样数据、对齐数据）
+      - sequence_lists/: 序列划分列表（train/val/test）
+      - index_maps/: 样本索引映射（train_index/val_index/test_index）
 """
 
 from pathlib import Path
