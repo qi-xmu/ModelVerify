@@ -12,32 +12,99 @@ from base.interpolate import get_time_series
 from base.rtab import RTABData
 from base.serialize import PosesDataSerializer
 
+# def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None, gap_info: dict = None):
+#     """绘制 2D 轨迹图，参考 DataCheck 风格"""
+#     print(f"正在生成轨迹图：{output_path.name}")
+#     plt.figure(figsize=(10, 8))
+    
+#     # 绘制主要轨迹 (gt.csv 数据)
+#     plt.plot(raw_gt.ps[:, 0], raw_gt.ps[:, 1], 'b-', label='GT Trajectory (Node)', alpha=0.7, linewidth=1.5)
+    
+#     # 如果指定了对比数据库优化位姿 (-dbp)
+#     if opt_gt is not None:
+#         plt.plot(opt_gt.ps[:, 0], opt_gt.ps[:, 1], 'g--', label='Optimized Trajectory (DB Opt)', alpha=0.6)
+
+#     # 标记时间空洞 (Gaps) - 红点
+#     if gap_info and gap_info["gap_idxs"]:
+#         gap_ps = raw_gt.ps[gap_info["gap_idxs"]]
+#         plt.scatter(gap_ps[:, 0], gap_ps[:, 1], c='red', s=30, label='Time Gaps > 1s', zorder=5)
+
+#     plt.xlabel('X (m)')
+#     plt.ylabel('Y (m)')
+#     plt.title('Trajectory 2D View')
+#     plt.legend()
+#     plt.grid(True, linestyle=':', alpha=0.5)
+#     plt.axis('equal')
+#     plt.savefig(output_path, dpi=300, bbox_inches="tight")
+#     plt.close()
 def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None, gap_info: dict = None):
-    """绘制 2D 轨迹图，参考 DataCheck 风格"""
+    """绘制 2D 轨迹图，复用 base.draw.Poses 的绘图风格"""
     print(f"正在生成轨迹图：{output_path.name}")
+    
+    # 创建一个新的图形
     plt.figure(figsize=(10, 8))
     
-    # 绘制主要轨迹 (gt.csv 数据)
-    plt.plot(raw_gt.ps[:, 0], raw_gt.ps[:, 1], 'b-', label='GT Trajectory (Node)', alpha=0.7, linewidth=1.5)
+    # 提取位置数据
+    positions = raw_gt.ps
+    x = positions[:, 0]
+    y = positions[:, 1]
+    
+    # 绘制主要轨迹 (gt.csv 数据) - 参考 Poses.py 的绘图风格
+    plt.plot(x, y, 'b-', label='GT Trajectory (Node)', alpha=0.7, linewidth=1.5)
+    
+    # 绘制起点（用绿色圆点）- 参考 Poses.py 的标记风格
+    plt.plot(
+        x[0], y[0], 
+        marker='o', color='green', markersize=10, 
+        label='Start', linestyle='None'
+    )
+    
+    # 绘制终点（用红色叉）- 参考 Poses.py 的标记风格
+    plt.plot(
+        x[-1], y[-1], 
+        marker='x', color='red', markersize=10, 
+        label='End', linestyle='None'
+    )
     
     # 如果指定了对比数据库优化位姿 (-dbp)
     if opt_gt is not None:
-        plt.plot(opt_gt.ps[:, 0], opt_gt.ps[:, 1], 'g--', label='Optimized Trajectory (DB Opt)', alpha=0.6)
+        opt_positions = opt_gt.ps
+        opt_x = opt_positions[:, 0]
+        opt_y = opt_positions[:, 1]
+        
+        # 绘制优化轨迹 - 使用虚线样式
+        plt.plot(opt_x, opt_y, 'g--', label='Optimized Trajectory (DB Opt)', 
+                 alpha=0.6, linewidth=1.5)
+        
+        # 绘制优化轨迹的起点和终点
+        plt.plot(
+            opt_x[0], opt_y[0], 
+            marker='o', color='green', markersize=8, 
+            linestyle='None', alpha=0.6
+        )
+        plt.plot(
+            opt_x[-1], opt_y[-1], 
+            marker='x', color='red', markersize=8, 
+            linestyle='None', alpha=0.6
+        )
 
     # 标记时间空洞 (Gaps) - 红点
     if gap_info and gap_info["gap_idxs"]:
         gap_ps = raw_gt.ps[gap_info["gap_idxs"]]
-        plt.scatter(gap_ps[:, 0], gap_ps[:, 1], c='red', s=30, label='Time Gaps > 1s', zorder=5)
+        plt.scatter(gap_ps[:, 0], gap_ps[:, 1], c='red', s=30, 
+                   label='Time Gaps > 1s', zorder=5, alpha=0.8)
 
+    # 设置图表属性 - 参考 Poses.py 的样式
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
     plt.title('Trajectory 2D View')
     plt.legend()
     plt.grid(True, linestyle=':', alpha=0.5)
     plt.axis('equal')
+    
+    # 保存图像
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
-
 
 def check_groundtruth_gap(t_us, max_gap_s=1.0):
     """真值空洞检测逻辑"""
