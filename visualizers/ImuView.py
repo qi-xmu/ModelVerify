@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
 """
-基于惯性网络的运动估计系统
+IMU数据可视化工具
 
-该脚本用于加载和运行预训练的惯性网络模型，对惯性测量单元(IMU)数据进行运动轨迹估计。
+该脚本用于将惯性测量单元(IMU)数据通过Rerun进行可视化展示。
 
 功能:
-- 支持加载多个预训练模型进行批量预测
-- 支持单设备数据(UnitData)和数据集(DeviceDataset)两种输入模式
-- 可指定时间范围进行部分数据处理
-- 可选择使用AHRS(姿态航向参考系统)或地面真值(ground truth)作为参考
+- 加载单设备数据(UnitData)
+- 使用Rerun可视化IMU数据
+- 同时显示body坐标系和global坐标系下的IMU数据
+- 支持使用地面真值(ground truth)的旋转信息进行坐标变换
 
 参数说明:
-- -m/--models: 指定要使用的模型名称列表
-- --models_path: 指定模型文件夹路径
-- --using_ahrs: 使用AHRS数据而非地面真值
+-u/--unit: 指定要可视化的设备数据单元
+
+使用示例:
+python visualizers/ImuView.py -u <unit_path>
 
 作者: qi-xmu
 版本: 1.0
 """
 
 from base.args_parser import DatasetArgsParser
-from base.datatype import DeviceDataset, ImuData, UnitData
-from base.model import DataRunner, InertialNetworkData, ModelLoader
+from base.datatype import UnitData
 from base.rerun_ext import RerunView, send_imu_data
 
 
 def main():
     dap = DatasetArgsParser()
-    dap.parser.add_argument("-m", "--models", nargs="+", help="模型")
-    dap.parser.add_argument("--models_path", type=str, help="模型文件夹")
-    dap.parser.add_argument("--using_ahrs", action="store_true", default=False)
     dap.parse()
 
     if dap.unit:
