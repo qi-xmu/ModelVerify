@@ -12,31 +12,6 @@ from base.interpolate import get_time_series
 from base.rtab import RTABData
 from base.serialize import PosesDataSerializer
 
-# def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None, gap_info: dict = None):
-#     """绘制 2D 轨迹图，参考 DataCheck 风格"""
-#     print(f"正在生成轨迹图：{output_path.name}")
-#     plt.figure(figsize=(10, 8))
-    
-#     # 绘制主要轨迹 (gt.csv 数据)
-#     plt.plot(raw_gt.ps[:, 0], raw_gt.ps[:, 1], 'b-', label='GT Trajectory (Node)', alpha=0.7, linewidth=1.5)
-    
-#     # 如果指定了对比数据库优化位姿 (-dbp)
-#     if opt_gt is not None:
-#         plt.plot(opt_gt.ps[:, 0], opt_gt.ps[:, 1], 'g--', label='Optimized Trajectory (DB Opt)', alpha=0.6)
-
-#     # 标记时间空洞 (Gaps) - 红点
-#     if gap_info and gap_info["gap_idxs"]:
-#         gap_ps = raw_gt.ps[gap_info["gap_idxs"]]
-#         plt.scatter(gap_ps[:, 0], gap_ps[:, 1], c='red', s=30, label='Time Gaps > 1s', zorder=5)
-
-#     plt.xlabel('X (m)')
-#     plt.ylabel('Y (m)')
-#     plt.title('Trajectory 2D View')
-#     plt.legend()
-#     plt.grid(True, linestyle=':', alpha=0.5)
-#     plt.axis('equal')
-#     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-#     plt.close()
 def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None, gap_info: dict = None):
     """绘制 2D 轨迹图，复用 base.draw.Poses 的绘图风格"""
     print(f"正在生成轨迹图：{output_path.name}")
