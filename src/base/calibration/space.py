@@ -28,7 +28,7 @@ def global12(
     隐含信息：base 和 target 为刚体，gripper 和 camera 为刚体。
     """
     # 插值对齐
-    t_new_us = get_time_series([cs1.t_us, cs2.t_us], rate=100)
+    t_new_us = get_time_series([cs1.t_us, cs2.t_us], rate=10)
     t_new_us = t_new_us[: 100 * 20]
     cs1 = cs1.interpolate(t_new_us)
     cs2 = cs2.interpolate(t_new_us)
@@ -46,5 +46,6 @@ def global12(
 
     # 构造绕z轴的旋转
     rad = -np.mean(np.array(angles))
+    print("Global Rad:", rad)
     rot12 = Rotation.from_rotvec([0, 0, rad])
     return Pose(rot12, np.zeros(3))
