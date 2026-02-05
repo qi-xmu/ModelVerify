@@ -5,6 +5,8 @@ from scipy.spatial.transform import Rotation
 from base.datatype import PosesData
 from base.interpolate import get_time_series
 
+from pathlib import Path
+import matplotlib.pyplot as plt
 
 def _get_angvels(t_us: NDArray, rots: Rotation, step: int = 1):
     """获取角速度列表"""
@@ -30,7 +32,9 @@ def match21(
     cs2: PosesData,
     *,
     time_range=(0, 50),
-    resolution=100,
+    resolution=200,
+    save_path: Path | None = None,
+    show=False,
 ) -> int:
     # 分辨率不能大于时间序列的采样率，否则没有插值的意义
     rate = min(cs1.rate, cs2.rate)
@@ -52,9 +56,20 @@ def match21(
     t21_us = lag * (t_new_us[1] - t_new_us[0])
     print("Ground time gap: ", t21_us / 1e6)
 
-    time_range = (0, 20)
-    cs1 = cs1.get_time_range(time_range)
-    cs2 = cs2.get_time_range(time_range)
-    cs2.t_us += t21_us
+    if save_path or show:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        t_new_us = t_new_us - t_new_us[0]
+        ax.set_title("Best Time Offset: {:.3f}s".format(t21_us * 1e-6))
+        ax.plot(t_new_us / 1e6, seq1, label="Seq1", alpha=0.5)
+        ax.plot((t_new_us + t21_us) / 1e6, seq2, label="Seq2", alpha=0.5)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Angular Velocity (rad/s)")
+        ax.legend()
+        ax.grid()
+        if save_path:
+            fig.savefig(save_path)
+        if not show:
+            plt.close(fig)
 
     return t21_us

@@ -479,12 +479,12 @@ def main():
     print("\n=== 保存 imu_in.csv ===")
     
     # 保存插值对齐后的 IMU 数据
-    imu_in_csv_path = output_dir / "imu_in.csv"
+    imu_in_csv_path = output_dir / "imu.csv"
     if imu_in_csv_path.exists():
         imu_in_csv_path.unlink()  # 删除旧文件
     from base.serialize import ImuDataSerializer
     ImuDataSerializer(imu_data).save(imu_in_csv_path)
-    print(f"已保存 imu_in.csv：{imu_in_csv_path}")
+    print(f"已保存 imu.csv：{imu_in_csv_path}")
     
     print("\n预处理完成！")
 
