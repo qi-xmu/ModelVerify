@@ -32,7 +32,7 @@ def match21(
     cs2: PosesData,
     *,
     time_range=(0, 50),
-    resolution=200,
+    resolution=100,
     save_path: Path | None = None,
     show=False,
 ) -> int:

@@ -3,14 +3,13 @@
 PreprocessDB - RTAB-Map 数据预处理脚本
 
 功能说明：
-    1. 从 RTAB-Map 数据库/CSV 加载轨迹数据（.db/.csv）
+    1. 从 RTAB-Map 数据库加载轨迹数据（.db）
     2. 从 CSV 文件加载 IMU 数据（imu.csv）
-    3. 加载优化轨迹（opt）并与 GT 同步对齐
-    4. 应用 Body Frame 转换（RTAB Body → IMU Body）
-    5. 时间对齐 IMU 和 GT 数据
-    6. 将 IMU/GT/OPT 插值到统一时间轴
-    7. 生成真值轨迹与可视化（gt.csv、gt.png）
-    8. 输出 IMU/OPT 标准化结果（imu-c.csv/opt.csv）
+    3. 应用 Body Frame 转换（RTAB Body → IMU Body）
+    4. 时间对齐 IMU 和 GT 数据
+    5. 将 GT 和 IMU 插值到统一时间轴
+    6. 生成真值轨迹文件（gt.csv）
+    7. 提供可视化验证（轨迹图、角速度对比图、Rerun）
 
 坐标系说明：
     - RTAB Body Frame: RTAB-Map 采集设备（相机）的载体坐标系
@@ -33,7 +32,7 @@ from base.datatype import GroundTruthData, ImuData, PosesData
 from base.interpolate import get_time_series
 from base.rtab import RTABData
 from base.serialize import PosesDataSerializer
-from base.rerun_ext import RerunView, send_imu_data
+from base.rerun_ext import RerunView, send_imu_data, send_pose_data
 
 def find_unit_directories(base_dir: Path, depth: int) -> list[Path]:
     """
@@ -86,7 +85,7 @@ def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesDat
         - 蓝色实线：原始轨迹
         - 绿色圆点：起点
         - 红色叉：终点
-        - 绿色实线（可选）：优化轨迹对比
+        - 绿色虚线（可选）：优化轨迹对比
         - 红点：时间空洞位置（间隔 > 1.0 秒）
     """
     """绘制 2D 轨迹图，复用 base.draw.Poses 的绘图风格"""
@@ -117,14 +116,14 @@ def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesDat
         label='End', linestyle='None'
     )
     
-    # 如果存在优化轨迹，则一并绘制
+    # 如果指定了对比数据库优化位姿 (-dbp)
     if opt_gt is not None:
         opt_positions = opt_gt.ps
         opt_x = opt_positions[:, 0]
         opt_y = opt_positions[:, 1]
         
-        # 绘制优化轨迹 - 实线样式
-        plt.plot(opt_x, opt_y, 'g-', label='Optimized Trajectory (Opt)', 
+        # 绘制优化轨迹 - 使用虚线样式
+        plt.plot(opt_x, opt_y, 'g--', label='Optimized Trajectory (DB Opt)', 
                  alpha=0.6, linewidth=1.5)
         
         # 绘制优化轨迹的起点和终点
@@ -351,7 +350,7 @@ def time_sync(
     coarse_time_gc = match21(imu_poses, gt_data, 
                            time_range=coarse_range, 
                            save_path=coarse_save_path,
-                           resolution=100)  
+                           resolution=100)  # 较低分辨率
     
     print(f"粗对齐结果: {coarse_time_gc / 1e6:.6f} 秒")
     
@@ -392,9 +391,8 @@ def time_sync(
     # 最终时间偏移 = 粗对齐结果 + 相对偏移
     fine_time_gc = coarse_time_gc + relative_offset
     
-    print("=" * 60)
     print(f"粗对齐结果: {coarse_time_gc / 1e6:.6f} 秒")
-    print(f"精对齐相对偏移: {relative_offset / 1e6:.6f} 秒")
+    print(f"相对偏移: {relative_offset / 1e6:.6f} 秒")
     print(f"最终时间偏移: {fine_time_gc / 1e6:.6f} 秒 ({fine_time_gc} μs)")
     
     # 应用最终的时间偏移
@@ -463,12 +461,9 @@ def rerun_verify_coordinate_transform(imu_data: ImuData, gt_data: GroundTruthDat
     
     # 发送使用 Z-UP Global Frame 旋转转换后的 IMU 数据
     send_imu_data(imu_global, tag="global")
+    
 
-
-def process_unit_directory(
-    unit_dir: Path,
-    args,
-) -> tuple[GroundTruthData, ImuData, PosesData | None, int, dict]:
+def process_unit_directory(unit_dir: Path, args) -> tuple[GroundTruthData, ImuData, int, dict]:
     """
     处理单个单元目录
     
@@ -477,10 +472,9 @@ def process_unit_directory(
         args: 命令行参数
     
     返回：
-        (raw_gt, imu_data, opt_data, t_offset_us, gap_info): 
+        (raw_gt, imu_data, t_offset_us, gap_info): 
             - raw_gt: 真值数据
             - imu_data: IMU数据
-            - opt_data: 优化轨迹（可选）
             - t_offset_us: 时间偏移量
             - gap_info: 时间空洞信息
     """
@@ -504,12 +498,6 @@ def process_unit_directory(
     
     # 从 CSV 加载 IMU 数据
     imu_data = ImuData.from_csv(imu_file)
-
-    # 从 RTAB-Map 加载优化轨迹（可选）
-    opt_data = None
-    if hasattr(rtab_data, "opt_ps"):
-        opt_t_us = getattr(rtab_data, "opt_t_us", rtab_data.node_t_us)
-        opt_data = PosesData(opt_t_us, rtab_data.opt_rots, rtab_data.opt_ps)
     
     # 时间对齐
     # 传入单元目录作为输出目录，让 match21 直接生成时间对齐图
@@ -520,23 +508,14 @@ def process_unit_directory(
         fine_range=args.time_range_fine,
         output_dir=unit_dir,
     )
-
+    
     # 检测时间空洞
     gap_info = check_groundtruth_gap(raw_gt.t_us)
+    
+    return raw_gt, imu_data, t_offset_us, gap_info
 
-    return raw_gt, imu_data, opt_data, t_offset_us, gap_info
-
-def save_results(
-    raw_gt: GroundTruthData,
-    imu_data: ImuData,
-    opt_data: PosesData | None,
-    t_offset_us: int,
-    gap_info: dict,
-    output_dir: Path,
-    args,
-    data_path: str,
-    device_name: str,
-):
+def save_results(raw_gt: GroundTruthData, imu_data: ImuData, t_offset_us: int, 
+                 gap_info: dict, output_dir: Path, args, data_path: str, device_name: str):
     """
     保存处理结果
     
@@ -576,31 +555,25 @@ def save_results(
     print(f"  - 精对齐图：{output_dir / 'TimeDiff2.png'}")
     
     # 时间同步插值
-    print("\n=== 时间同步插值 ===")
-    ts_us = [imu_data.t_us, raw_gt.t_us]
-    if opt_data is not None:
-        opt_data.t_us = opt_data.t_us + t_offset_us
-        ts_us.append(opt_data.t_us)
-
-    t_new_us = get_time_series(ts_us)
+    print("=== 时间同步插值 ===")
+    t_new_us = get_time_series([imu_data.t_us, raw_gt.t_us])
     print(f"统一时间序列：{len(t_new_us)} 个时间点")
     
     # 插值到统一时间序列
     raw_gt = raw_gt.interpolate(t_new_us)
     imu_data = imu_data.interpolate(t_new_us)
-    if opt_data is not None:
-        opt_data = opt_data.interpolate(t_new_us)
     print(f"插值完成：GT 和 IMU 都有 {len(raw_gt)} 个点")
-
-    # 重置时间起点，使 t=0 对齐
-    t_start_us = int(t_new_us[0])
-    raw_gt.t_us = raw_gt.t_us - t_start_us
-    imu_data.t_us = imu_data.t_us - t_start_us
-    if opt_data is not None:
-        opt_data.t_us = opt_data.t_us - t_start_us
     
     # 绘制轨迹图
-    opt_poses = opt_data
+    opt_poses = None
+    if args.draw_db:
+        # 如果需要对比 DB 优化轨迹
+        db_file = RTABData.get_db_file(Path(data_path))
+        if db_file:
+            rtab_data = RTABData(db_file)
+            opt_poses = PosesData(rtab_data.opt_t_us, rtab_data.opt_rots, rtab_data.opt_ps)
+            opt_poses.t_us += t_offset_us
+            opt_poses.ps -= opt_poses.ps[0]  # reset start
     
     draw_trajectory(raw_gt, output_dir / "gt.png", opt_gt=opt_poses, gap_info=gap_info)
     print(f"已绘制轨迹图：{output_dir / 'gt.png'}")
@@ -622,16 +595,7 @@ def save_results(
         imu_csv_path.unlink()  # 删除旧文件
     from base.serialize import ImuDataSerializer
     ImuDataSerializer(imu_data).save(imu_csv_path)
-    print(f"已保存 imu-c.csv：{imu_csv_path}")
-
-    # 保存 opt.csv
-    if opt_data is not None:
-        opt_csv_path = output_dir / "opt.csv"
-        if opt_csv_path.exists():
-            opt_csv_path.unlink()
-        PosesDataSerializer(opt_data).save(opt_csv_path)
-        print(f"已保存 opt.csv：{opt_csv_path}")
-
+    print(f"已保存 imu.csv：{imu_csv_path}")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -647,7 +611,7 @@ def main():
         使用模式：
         1. 单元目录模式: -u <数据目录> [--output <输出目录>]
         - 数据目录必须包含：imu.csv 和一个 .db 文件
-        - 生成文件：gt.csv, imu-c.csv, opt.csv(可选), gt.png, TimeCheck.json, TimeDiff1/2.png
+        - 生成文件：gt.csv, TimeCheck.json, Trajectory.png, TimeDiff.png
         - 默认输出到数据目录本身
         
         2. 组目录模式: -g <组目录> 
@@ -663,7 +627,7 @@ def main():
         - 输出到各自的单元目录
         
         5. 兼容旧模式: --db <db文件> --imu <imu.csv> [--output <输出目录>]
-        - 生成文件：gt.csv, imu-c.csv, opt.csv(可选), gt.png, TimeCheck.json, TimeDiff1/2.png
+        - 生成文件：gt.csv, TimeCheck.json, Trajectory.png, TimeDiff.png
         - 默认输出到 imu.csv 同文件夹
         """
     )
@@ -697,6 +661,8 @@ def main():
         default=None,
         help="精对齐时间范围（秒），如: -t2 0 10；不指定则自动选择尖峰最多的约10s窗口",
     )
+    parser.add_argument("-dbp", "--draw-db", action="store_true",
+                       help="绘制DB优化轨迹对比图")
     parser.add_argument("-rv", "--rerun-verify", action="store_true", 
                        help="使用 Rerun 验证坐标系转换是否正确")
     args = parser.parse_args()
@@ -727,10 +693,7 @@ def main():
         
         try:
             # 处理单个单元目录
-            raw_gt, imu_data, opt_data, t_offset_us, gap_info = process_unit_directory(
-                unit_dir,
-                args,
-            )
+            raw_gt, imu_data, t_offset_us, gap_info = process_unit_directory(unit_dir, args)
             
             # 确定输出目录
             output_dir = Path(args.output) if args.output else unit_dir
@@ -738,17 +701,8 @@ def main():
             device_name = unit_dir.name
             
             # 保存结果
-            save_results(
-                raw_gt,
-                imu_data,
-                opt_data,
-                t_offset_us,
-                gap_info,
-                output_dir,
-                args,
-                data_path,
-                device_name,
-            )
+            save_results(raw_gt, imu_data, t_offset_us, gap_info, output_dir, 
+                        args, data_path, device_name)
             
             print(f"\n单元目录处理完成: {unit_dir}")
             
@@ -781,10 +735,7 @@ def main():
             
             try:
                 # 处理单个单元目录
-                raw_gt, imu_data, opt_data, t_offset_us, gap_info = process_unit_directory(
-                    unit_dir,
-                    args,
-                )
+                raw_gt, imu_data, t_offset_us, gap_info = process_unit_directory(unit_dir, args)
                 
                 # 输出目录为单元目录本身
                 output_dir = unit_dir
@@ -792,17 +743,8 @@ def main():
                 device_name = unit_dir.name
                 
                 # 保存结果
-                save_results(
-                    raw_gt,
-                    imu_data,
-                    opt_data,
-                    t_offset_us,
-                    gap_info,
-                    output_dir,
-                    args,
-                    data_path,
-                    device_name,
-                )
+                save_results(raw_gt, imu_data, t_offset_us, gap_info, output_dir,
+                            args, data_path, device_name)
                 
                 success_count += 1
                 print(f"✓ 单元目录处理成功: {unit_dir}")
@@ -842,10 +784,7 @@ def main():
             
             try:
                 # 处理单个单元目录
-                raw_gt, imu_data, opt_data, t_offset_us, gap_info = process_unit_directory(
-                    unit_dir,
-                    args,
-                )
+                raw_gt, imu_data, t_offset_us, gap_info = process_unit_directory(unit_dir, args)
                 
                 # 输出目录为单元目录本身
                 output_dir = unit_dir
@@ -853,17 +792,8 @@ def main():
                 device_name = unit_dir.name
                 
                 # 保存结果
-                save_results(
-                    raw_gt,
-                    imu_data,
-                    opt_data,
-                    t_offset_us,
-                    gap_info,
-                    output_dir,
-                    args,
-                    data_path,
-                    device_name,
-                )
+                save_results(raw_gt, imu_data, t_offset_us, gap_info, output_dir,
+                            args, data_path, device_name)
                 
                 success_count += 1
                 print(f"✓ 单元目录处理成功: {unit_dir}")
@@ -903,10 +833,7 @@ def main():
             
             try:
                 # 处理单个单元目录
-                raw_gt, imu_data, opt_data, t_offset_us, gap_info = process_unit_directory(
-                    unit_dir,
-                    args,
-                )
+                raw_gt, imu_data, t_offset_us, gap_info = process_unit_directory(unit_dir, args)
                 
                 # 输出目录为单元目录本身
                 output_dir = unit_dir
@@ -914,17 +841,8 @@ def main():
                 device_name = unit_dir.name
                 
                 # 保存结果
-                save_results(
-                    raw_gt,
-                    imu_data,
-                    opt_data,
-                    t_offset_us,
-                    gap_info,
-                    output_dir,
-                    args,
-                    data_path,
-                    device_name,
-                )
+                save_results(raw_gt, imu_data, t_offset_us, gap_info, output_dir,
+                            args, data_path, device_name)
                 
                 success_count += 1
                 print(f"✓ 单元目录处理成功: {unit_dir}")
@@ -960,16 +878,7 @@ def main():
         
         # 从 CSV 加载 IMU 数据
         imu_data = ImuData.from_csv(imu_file)
-
-        # 从 RTAB-Map 加载优化轨迹（可选）
-        opt_data = None
-        if hasattr(rtab_data, "opt_ps"):
-            opt_t_us = getattr(rtab_data, "opt_t_us", rtab_data.node_t_us)
-            opt_data = PosesData(opt_t_us, rtab_data.opt_rots, rtab_data.opt_ps)
         
-        # 确定输出目录
-        output_dir = Path(args.output) if args.output else imu_file.parent
-
         # 时间对齐（不插值）
         # 传入输出目录，让 match21 直接生成时间对齐图
         raw_gt, t_offset_us = time_sync(
@@ -983,22 +892,14 @@ def main():
         # 检测时间空洞
         gap_info = check_groundtruth_gap(raw_gt.t_us)
         
-        # 输出目录已确定
+        # 确定输出目录
+        output_dir = Path(args.output) if args.output else imu_file.parent
         data_path = str(imu_file.parent.absolute())
         device_name = imu_file.parent.name
         
         # 保存结果
-        save_results(
-            raw_gt,
-            imu_data,
-            opt_data,
-            t_offset_us,
-            gap_info,
-            output_dir,
-            args,
-            data_path,
-            device_name,
-        )
+        save_results(raw_gt, imu_data, t_offset_us, gap_info, output_dir,
+                    args, data_path, device_name)
         
         print(f"\n兼容旧模式处理完成")
     
