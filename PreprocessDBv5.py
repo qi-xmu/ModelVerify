@@ -22,7 +22,6 @@ PreprocessDB - RTAB-Map 数据预处理脚本
 import argparse
 from pathlib import Path
 import json
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -30,6 +29,7 @@ import rerun as rr
 
 from base.calibration.time import match21
 from base.datatype import GroundTruthData, ImuData, PosesData
+from base.draw.Poses import draw_trajectory_2d, draw_trajectory_2d_compare
 from base.interpolate import get_time_series
 from base.rtab import RTABData
 from base.serialize import PosesDataSerializer
@@ -69,7 +69,7 @@ def find_unit_directories(base_dir: Path, depth: int) -> list[Path]:
     _find_dirs(base_dir, depth)
     return unit_dirs
 
-def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None, gap_info: dict = None):
+def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesData = None):
     """
     绘制 2D 轨迹图
     
@@ -78,84 +78,21 @@ def draw_trajectory(raw_gt: GroundTruthData, output_path: Path, opt_gt: PosesDat
             - ps: 位置数据（N x 3 数组）
         output_path: 输出图片路径
         opt_gt: 可选，优化轨迹数据（PosesData）用于对比
-        gap_info: 可选，时间空洞信息字典
-            - gap_idxs: 空洞索引列表
-            - gap_diff: 空洞时长列表
     
     图表元素：
-        - 蓝色实线：原始轨迹
-        - 绿色圆点：起点
-        - 红色叉：终点
-        - 绿色实线（可选）：优化轨迹对比
-        - 红点：时间空洞位置（间隔 > 1.0 秒）
+        - GT/OPT 轨迹对比（参考 GenerateValid 的绘图风格）
     """
-    """绘制 2D 轨迹图，复用 base.draw.Poses 的绘图风格"""
     print(f"正在生成轨迹图：{output_path.name}")
-    
-    # 创建一个新的图形
-    plt.figure(figsize=(10, 8))
-    
-    # 提取位置数据
-    positions = raw_gt.ps
-    x = positions[:, 0]
-    y = positions[:, 1]
-    
-    # 绘制主要轨迹 (gt.csv 数据) - 参考 Poses.py 的绘图风格
-    plt.plot(x, y, 'b-', label='GT Trajectory (Node)', alpha=0.7, linewidth=1.5)
-    
-    # 绘制起点（用绿色圆点）- 参考 Poses.py 的标记风格
-    plt.plot(
-        x[0], y[0], 
-        marker='o', color='green', markersize=10, 
-        label='Start', linestyle='None'
-    )
-    
-    # 绘制终点（用红色叉）- 参考 Poses.py 的标记风格
-    plt.plot(
-        x[-1], y[-1], 
-        marker='x', color='red', markersize=10, 
-        label='End', linestyle='None'
-    )
-    
-    # 如果存在优化轨迹，则一并绘制
-    if opt_gt is not None:
-        opt_positions = opt_gt.ps
-        opt_x = opt_positions[:, 0]
-        opt_y = opt_positions[:, 1]
-        
-        # 绘制优化轨迹 - 实线样式
-        plt.plot(opt_x, opt_y, 'g-', label='Optimized Trajectory (Opt)', 
-                 alpha=0.6, linewidth=1.5)
-        
-        # 绘制优化轨迹的起点和终点
-        plt.plot(
-            opt_x[0], opt_y[0], 
-            marker='o', color='green', markersize=8, 
-            linestyle='None', alpha=0.6
-        )
-        plt.plot(
-            opt_x[-1], opt_y[-1], 
-            marker='x', color='red', markersize=8, 
-            linestyle='None', alpha=0.6
-        )
+    if opt_gt is None:
+        draw_trajectory_2d(raw_gt, show=False, save_path=output_path)
+        return
 
-    # 标记时间空洞 (Gaps) - 红点
-    if gap_info and gap_info["gap_idxs"]:
-        gap_ps = raw_gt.ps[gap_info["gap_idxs"]]
-        plt.scatter(gap_ps[:, 0], gap_ps[:, 1], c='red', s=30, 
-                   label='Time Gaps > 1s', zorder=5, alpha=0.8)
-
-    # 设置图表属性 - 参考 Poses.py 的样式
-    plt.xlabel('X (m)')
-    plt.ylabel('Y (m)')
-    plt.title('Trajectory 2D View')
-    plt.legend()
-    plt.grid(True, linestyle=':', alpha=0.5)
-    plt.axis('equal')
-    
-    # 保存图像
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    draw_trajectory_2d_compare(
+        [raw_gt, opt_gt],
+        ["GT", "OPT"],
+        show=False,
+        save_path=output_path,
+    )
 
 def check_groundtruth_gap(t_us, max_gap_s=1.0):
     """
@@ -602,7 +539,7 @@ def save_results(
     # 绘制轨迹图
     opt_poses = opt_data
     
-    draw_trajectory(raw_gt, output_dir / "gt.png", opt_gt=opt_poses, gap_info=gap_info)
+    draw_trajectory(raw_gt, output_dir / "gt.png", opt_gt=opt_poses)
     print(f"已绘制轨迹图：{output_dir / 'gt.png'}")
     
     # Rerun 验证坐标系转换
