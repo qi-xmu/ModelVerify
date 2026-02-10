@@ -147,8 +147,9 @@ def plot_model_comparison(
         })
 
     # 在图例上方绘制百分位数值表格
-    ax2 = fig.add_axes([0.58, 0.55, 0.38, 0.25])
-    ax2.axis('off')
+    # 使用 ax 的坐标系，位置为 [left, bottom, width, height]
+    ax_table = ax.inset_axes([0.55, 0.38, 0.42, 0.20])
+    ax_table.axis('off')
 
     table_header = ["Model", "90%", "95%", "99%"]
     cell_text = []
@@ -163,7 +164,7 @@ def plot_model_comparison(
         ])
         text_colors.append([data["color"], data["color"], data["color"], data["color"]])
 
-    table = ax2.table(
+    table = ax_table.table(
         cellText=cell_text,
         colLabels=table_header,
         cellLoc='center',
