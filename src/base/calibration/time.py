@@ -41,9 +41,13 @@ def match21(
     resolution = min(resolution, rate)
     print(f"Rate1:{cs1.rate}, Rate2: {cs2.rate}, reso: {resolution}")
 
-    t_new_us = get_time_series([cs1.t_us, cs2.t_us], *time_range, rate=rate)
-    cs1 = cs1.interpolate(t_new_us)
-    cs2 = cs2.interpolate(t_new_us)
+    # 使用相对时间轴，避免原始时间戳不重叠导致空区间
+    cs1_rel = PosesData(cs1.t_us - cs1.t_us[0], cs1.rots, cs1.ps)
+    cs2_rel = PosesData(cs2.t_us - cs2.t_us[0], cs2.rots, cs2.ps)
+
+    t_new_us = get_time_series([cs1_rel.t_us, cs2_rel.t_us], *time_range, rate=rate)
+    cs1 = cs1_rel.interpolate(t_new_us)
+    cs2 = cs2_rel.interpolate(t_new_us)
     print(f"使用时间范围：{(cs1.t_us[-1] - cs1.t_us[0]) / 1e6} 秒, 数量 {len(cs1)}")
 
     seq1, t1 = _get_angvels(cs1.t_us, cs1.rots, step=int(rate / resolution))
