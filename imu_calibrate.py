@@ -292,12 +292,21 @@ def resolve_unit_dirs(
             unit_paths.append(resolved)
             continue
 
-        # -s/-d 模式：按 dataset/device/unit 组合
-        if device_dirs:
+        # -d/-u 模式：优先按 dataset/unit 组合（-d 是 -u 的上一层目录）
+        if dataset_dirs:
             roots = dataset_dirs if dataset_dirs else [Path.cwd()]
             for dataset_dir in roots:
-                for device_dir in device_dirs:
-                    unit_paths.append(dataset_dir / device_dir / unit_input)
+                direct_unit = dataset_dir / unit_input
+                if direct_unit.exists():
+                    unit_paths.append(direct_unit)
+                    continue
+
+                # 兼容旧结构：dataset/device/unit
+                if device_dirs:
+                    for device_dir in device_dirs:
+                        unit_paths.append(dataset_dir / device_dir / unit_input)
+                else:
+                    unit_paths.append(direct_unit)
             continue
 
         # 仅提供单元名：从当前目录和 dataset_compress 搜索
