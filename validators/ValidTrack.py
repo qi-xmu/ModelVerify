@@ -37,7 +37,7 @@ import numpy as np
 from tqdm import tqdm
 
 from base.args_parser import DatasetArgsParser
-from base.calibration import space
+from base.calibration import space, time
 from base.datatype import DeviceDataset, GroundTruthData, UnitData
 from base.draw.CDF import plot_one_cdf
 from base.draw.Poses import draw_trajectory_2d_compare
@@ -70,6 +70,15 @@ def main():
         eval_poses = GroundTruthData.from_csv(eval_path)
 
         ud.load_data()
+
+        # 对齐时间
+        time_gc = time.match21(eval_poses, ud.gt_data)
+        ud.gt_data.t_us += time_gc
+        print("Time GC:", time_gc)
+
+        # 对齐起点
+        ud.gt_data.ps -= ud.gt_data.ps[0]
+        eval_poses.ps -= eval_poses.ps[0] + np.array([-0.6, 0.7, 0])
         tf_fg = space.global12(eval_poses, ud.gt_data)
         ud.gt_data.transform_global(tf_fg)
 
@@ -77,10 +86,13 @@ def main():
         evaluator.get_eval(eval_poses, name)
 
         cdf_data = evaluator.get_cdf(name, "ATE")
+        mean_ate = np.mean(cdf_data["errors"])
+        print("Mean ATE:", mean_ate)
 
         draw_trajectory_2d_compare(
             [eval_poses, evaluator.ref_poses],
             labels=["Fusion", "GT"],
+            colors=[None, "red"],
             save_path=unit_out_dir / "trajectory.png",
             show=False,
         )

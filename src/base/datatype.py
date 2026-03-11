@@ -518,10 +518,10 @@ class ImuData:
             AssertionError: 当数据列数少于12列时
         """
         assert raw.shape[1] >= 12, f"Invalid raw data shape: {raw.shape}"
+        t_us = raw[:, 0] + raw[:, 11][0] + -raw[:, 0][0]  # 修正时间到UTC+8
         gyro = raw[:, 1:4]
         acce = raw[:, 4:7]
         ahrs = Rotation.from_quat(raw[:, 7:11], scalar_first=True)
-        t_us = raw[:, 0] + raw[:, 11][0] + -raw[:, 0][0]
 
         if raw.shape[1] >= 15:
             magn = raw[:, 12:15]
@@ -844,8 +844,9 @@ class CameraColumn:
     pc = ["p_CS_C_x [m]", "p_CS_C_y [m]", "p_CS_C_z [m]"]  # 相机位置
     qc = ["q_CS_w []", "q_CS_x []", "q_CS_y []", "q_CS_z []"]  # 相机姿态
     t_sys = ["t_system [us]"]  # 系统时间戳
+    state = ["tracking_state"]  # 跟踪状态
 
-    all = t + ps + qs + pc + qc + t_sys  # 所有列名
+    all = t + ps + qs + pc + qc + t_sys + state  # 所有列名
 
 
 class CameraData(PosesData):
@@ -893,6 +894,18 @@ class CameraData(PosesData):
 
         # 将传感器时间戳转换为相对时间戳
         t_us = t_sensor_us - t_sensor_us[0] + t_us[0]
+        return CameraData(t_us, rots, trans)
+
+    @staticmethod
+    def from_raw(raw: NDArray):
+        t_us = raw[:, 0]
+        trans = raw[:, 1:4]
+        quats = raw[:, 4:8]
+        t_system_us = raw[:, 15]
+
+        t_us = t_us - t_us[0] + t_system_us[0]
+        rots = Rotation.from_quat(quats, scalar_first=True)
+
         return CameraData(t_us, rots, trans)
 
 

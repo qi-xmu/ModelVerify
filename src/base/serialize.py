@@ -48,10 +48,6 @@ class PosesDataSerializer(Serializer):
         if not path.parent.exists():
             path.parent.mkdir(parents=True)
 
-        if path.exists():
-            print(f"File {path} already exists.")
-            return
-
         data = self.data
         raw = np.hstack(
             [
@@ -64,6 +60,7 @@ class PosesDataSerializer(Serializer):
             TypeHeader().add(TypeHeader.t_us).add(TypeHeader.posi).add(TypeHeader.quat)
         ).finish()
         pd.DataFrame(raw, columns=header).to_csv(path, index=False, float_format="%.6f")  # type:ignore
+        print(f"Save Pose Data in {path}")
 
 
 class ImuDataSerializer(Serializer):
@@ -92,6 +89,7 @@ class ImuDataSerializer(Serializer):
             .add(TypeHeader.magn)
         ).finish()
         pd.DataFrame(raw, columns=header).to_csv(path, index=False, float_format="%.6f")  # type:ignore
+        print(f"Save Imu Data in {path}")
 
 
 class UnitSerializer(Serializer):
