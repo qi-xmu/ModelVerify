@@ -22,7 +22,7 @@ TLIO npy 列定义:
     14-16: vel_World(3)
 
 用法:
-    uv run python H5Dataset2TLIO.py -i input.h5 -o /path/to/tlio_out
+    uv run python H5Dataset2TLIO.py -i input.h5 -o /path/to/tlio_out --export_split_lists
 """
 
 from __future__ import annotations
