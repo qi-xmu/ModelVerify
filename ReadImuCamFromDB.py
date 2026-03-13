@@ -147,7 +147,7 @@ class IMUDataReader:
             with open(output_path, 'w') as f:
                 f.write(header_line + '\n')
                 # 写入数据，不包含列名，保持原始精度，不控制浮点数格式
-                df.to_csv(f, index=False, header=False, float_format="%.6f")
+                df.to_csv(f, index=False, header=False, float_format="%.8f")
                 
             print(f"IMU数据已保存到: {output_path}")
             print(f"保存了 {len(df)} 条记录")
@@ -289,7 +289,7 @@ class CamDataReader:
 
             with open(output_path, "w") as f:
                 f.write(header_line + "\n")
-                df.to_csv(f, index=False, header=False, float_format="%.6f")
+                df.to_csv(f, index=False, header=False, float_format="%.8f")
 
             print(f"相机位姿已保存到: {output_path}")
             print(f"保存了 {len(df)} 条记录")
