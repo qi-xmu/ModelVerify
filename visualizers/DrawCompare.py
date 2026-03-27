@@ -48,10 +48,10 @@ from base.evaluate import Evaluation
 from base.interpolate import get_time_series
 from base.model import DataRunner, InertialNetworkData, ModelLoader
 
-# 真值的Body坐标系和Sensor的Body坐标系存在的固定插值
+# 真值的Body坐标系和Sensor的Body坐标系存在的固定插值（已注释）
 DefaultBodyRotation = Rotation.from_rotvec([0, -90, 0], degrees=True)
 DefaultBodyTransform = Pose(DefaultBodyRotation, np.zeros(3))
-# 使用融合算法推理轨迹，指定项目路径
+# 使用融合算法推理轨迹，指定项目路径（已注释）
 ProjectPath = (
     "/Users/qi/Codespace/Android/NAVIO/navio_sdk/src/main/cpp/SensorFusionAndroid"
 )
@@ -66,7 +66,7 @@ def main():
     # regen_fusion = dap.regen
     model_names = dap.args.models
     if model_names is None or len(model_names) == 0:
-        model_names = ["model_tlio_mi_hw_1216"]
+        model_names =["model_resnet_0111_96"]#  ["model_tlio_mi_hw_1216"]
 
     models_path = "models"
     if dap.args.models_path is not None:

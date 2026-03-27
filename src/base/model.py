@@ -25,7 +25,7 @@ class InertialNetwork:
     ):
         self.model_path = Path(model_path)
         self.name = self.model_path.name.split(".")[0]
-        self.device = device.DefaultDevice
+        self.device = device.CpuDevice
         self.device_name = str(self.device)
         self.model = torch.jit.load(self.model_path, map_location=self.device)
 
@@ -39,6 +39,12 @@ class InertialNetwork:
         self.warmup()
         print("Warmup complete.")
 
+    def set_device(self, target_device: torch.device | str) -> None:
+        self.device = torch.device(target_device)
+        self.device_name = str(self.device)
+        self.model = self.model.to(self.device)
+        self.model.eval()
+
     def warmup(self):
         block = torch.randn(self.input_shape, dtype=torch.float32, device=self.device)
         self.model(block)
@@ -48,8 +54,12 @@ class InertialNetwork:
             assert block.shape == self.input_shape, (
                 f"Input shape mismatch: {block.shape} != {self.input_shape}"
             )
-        inputs = torch.as_tensor(block, dtype=torch.float32, device=self.device)
-        output = self.model(inputs)
+        inputs = torch.from_numpy(np.ascontiguousarray(block)).to(
+            dtype=torch.float32,
+            device=self.device,
+        )
+        with torch.inference_mode():
+            output = self.model(inputs)
         meas: NDArray = output[0].cpu().detach().numpy().flatten()
         meas_cov: NDArray = output[1].cpu().detach().numpy().flatten()
         return meas, meas_cov
@@ -60,8 +70,14 @@ class InertialNetwork:
             assert block.shape == self.input_shape, (
                 f"Input shape mismatch: {block.shape} != {self.input_shape}"
             )
-        inputs = torch.as_tensor(block, dtype=torch.float32, device=self.device)
-        output = self.model(inputs)
+        inputs = torch.from_numpy(np.ascontiguousarray(block)).to(
+            dtype=torch.float32,
+            device=self.device,
+        )
+        with torch.inference_mode():
+            output = self.model(inputs)
+            if self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
         meas: NDArray = output[0].cpu().detach().numpy().flatten()
         meas_cov: NDArray = output[1].cpu().detach().numpy().flatten()
         end_time = time.perf_counter()
@@ -102,9 +118,13 @@ class MemoryInertialNetwork(InertialNetwork):
             assert block.shape == self.input_shape, (
                 f"Input shape mismatch: {block.shape} != {self.input_shape}"
             )
-        inputs = torch.as_tensor(block, dtype=torch.float32, device=self.device)
+        inputs = torch.from_numpy(np.ascontiguousarray(block)).to(
+            dtype=torch.float32,
+            device=self.device,
+        )
         memory = self.get_memory()
-        output = self.model(inputs, *memory)
+        with torch.inference_mode():
+            output = self.model(inputs, *memory)
 
         meas: NDArray = output[0].cpu().detach().numpy().flatten()
         meas_cov: NDArray = output[1].cpu().detach().numpy().flatten()
@@ -463,6 +483,7 @@ class DataRunner:
         time_range: tuple[float | None, float | None] = (None, None),
         has_init_rerun: bool = False,
         using_gt: bool = True,
+        visual: bool = True,
     ):
         self.ud = ud
         self.using_gt = using_gt
@@ -482,7 +503,7 @@ class DataRunner:
         world_imu_gt = self.imu_data.transform(self.gt_data.rots if using_gt else None)
         self.in_data = Data(world_imu_gt)
 
-        if not has_init_rerun and self.in_data.using_rerun:
+        if visual and not has_init_rerun and self.in_data.using_rerun:
             # rre.rerun_init(ud.name, imu_view_tags=["GT", "Raw"])
             rre.RerunView().add_imu_view(
                 tags=["GT", "Raw"],

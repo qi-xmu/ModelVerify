@@ -9,6 +9,9 @@ TLIO golden数据集结构:
     │   ├── imu_samples_0.csv          # Body frame IMU数据 (原始采样)
     │   ├── imu0_resampled_description.json
     │   └── imu0_resampled.npy         # Global frame数据 (200Hz重采样)
+    ├── train_list.txt  
+    ├── val_list.txt   
+    └── test_list.txt   
 
 数据格式:
     - imu_samples_0.csv: Body frame IMU数据 (原始采样率，非200Hz)
@@ -32,6 +35,12 @@ TLIO golden数据集结构:
 参数:
     -i, --input: 输入TLIO golden数据集目录
     -o, --output: 输出H5文件路径
+    --use_splits : 使用TLIO数据集自带的train/val/test分割
+    --train_ratio: 自动分割时训练集比例 (默认0.7)
+    --val_ratio: 自动分割时验证集比例 (默认0.15)
+    --test_ratio: 自动分割时测试集比例 (默认0.15)
+    --random_seed: 自动分割时的随机种子 (默认42)
+    --no_shuffle: 自动分割时不打乱序列顺序  
 """
 
 import argparse
@@ -52,7 +61,7 @@ from base.dataset.H5Type import (
 
 def get_h5type_code() -> tuple[str, str]:
     """读取H5Type.py文件内容"""
-    h5type_path = Path(__file__).parent / "base" / "dataset" / "H5Type.py"
+    h5type_path = Path(__file__).parent.parent / "src" / "base" / "dataset" / "H5Type.py"
     with open(h5type_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 

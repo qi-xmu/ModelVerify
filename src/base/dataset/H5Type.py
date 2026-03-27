@@ -22,8 +22,8 @@ data.h5
 │   │       ├── mag: [M, N, 3]       # M传感器, N时间步, 3特征(mag(3))
 │   │       ├── barom: [M, N, 2]     # M传感器, N时间步, 2特征(pressure, temp)
 │   │       └── ground_truth: [N, 10] # pos(3), qwxyz(4), vel(3)
-│   │   └── aligned          # 旋转对齐数据（可选）
-│   │       └── data: [N, 17]        # N时间步, 17特征(t_us, gyr(3), acc(3), pos(3), qwxyz(4), vel(3))
+│   │   └── aligned ：[N, 17]        # N时间步, 17特征(t_us, gyr(3), acc(3), pos(3), qwxyz(4), vel(3))         
+│   │       # aligned 旋转对齐数据（可选）
 │   ├── sequence_002
 │   └── ...
 ├── index_maps              # 预建索引（可选）
