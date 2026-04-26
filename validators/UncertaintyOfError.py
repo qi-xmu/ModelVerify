@@ -2,24 +2,27 @@
 """
 不确定性误差分析
 
-分析神经网络预测的协方差（不确定性估计）与实际误差之间的关系。
+分析神经网络预测的不确定性（不确定性估计）与实际误差之间的关系。
 
 主要功能：
-1. 对3轴数据（X、Y、Z）进行协方差-误差分析
-2. 计算皮尔逊相关系数评估协方差与误差的相关性
-3. 可视化展示协方差与误差的散点图及统计信息
+1. 对3轴数据（X、Y、Z）进行不确定性-误差分析
+2. 计算皮尔逊相关系数评估不确定性与误差的相关性
+3. 可视化展示不确定性与误差的散点图及统计信息
 
 使用方法：
     uv run python validators/UncertaintyOfError.py -m <模型名称> --dataset <数据集路径>
     uv run python validators/UncertaintyOfError.py -m <模型名称> --unit <单个数据路径>
 
+    可用数据集 /Users/qi/Resources/实验数据整理/TestDataset2/Redmi-K30-Pro
+
 输出：
-    - covariance_error_analysis_3axis.png: 3轴协方差-误差分析可视化图
+    - covariance_error_analysis_3axis.png: 3轴不确定性-误差分析可视化图
     - 结果保存在 results/<模型名>_<设备名>/ 目录下
 """
 
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
@@ -31,6 +34,11 @@ from base.datatype import DeviceDataset, UnitData
 from base.evaluate import Evaluation
 from base.model import DataRunner, InertialNetworkData, ModelLoader, NetworkResult
 from base.obj import Obj
+
+# 设置中文字体为宋体
+mpl.rcParams["font.family"] = "serif"
+mpl.rcParams["font.serif"] = ["SimSun", "Songti SC", "STSong"]
+mpl.rcParams["axes.unicode_minus"] = False
 
 
 class NetworkResultAnalysis:
@@ -53,22 +61,24 @@ class NetworkResultAnalysis:
 
         # Extract covariance matrices (diagonal elements for each axis)
         meas_cov = np.array(self.nr.meas_cov_list)
-        meas_cov = np.exp(meas_cov)
+        # 设置xyz的最小值为-4
+        # meas_cov = np.maximum(meas_cov, -4)
+        # meas_cov = np.exp(meas_cov)
 
         cov_x = meas_cov[:, 0]
         cov_y = meas_cov[:, 1]
         cov_z = meas_cov[:, 2]
 
         # Extract errors for each axis
+        errors = np.abs(errors)
         err_x = errors[:, 0]  # Error in x
         err_y = errors[:, 1]  # Error in y
         err_z = errors[:, 2]  # Error in z
 
         # Create figure with 3 subplots (one for each axis)
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        fig.suptitle(f"{self.name} 3-Axis Covariance vs Error Analysis", fontsize=16)
+        _fig, axes = plt.subplots(1, 3, figsize=(9, 3))
 
-        axis_labels = ["X Axis", "Y Axis", "Z Axis"]
+        axis_labels = ["X轴", "Y轴", "Z轴"]
         cov_data = [cov_x, cov_y, cov_z]
         err_data = [err_x, err_y, err_z]
         colors = ["red", "green", "blue"]
@@ -79,24 +89,74 @@ class NetworkResultAnalysis:
             # Scatter plot: Error vs Covariance
             ax = axes[i]
             ax.scatter(err, cov, alpha=0.5, s=20, color=color)
-            ax.set_xlabel(f"{ax_label} Error")
-            ax.set_ylabel(f"{ax_label} Covariance (Variance)")
-            ax.set_title(f"{ax_label}: Error vs Covariance")
-            ax.set_xlim(-1.05, 1.05)
-            ax.set_ylim(-0.01, 0.31)
+            ax.set_xlabel(f"{ax_label} 误差")
+            ax.set_ylabel(f"{ax_label} 不确定性")
+            ax.set_title(f"{ax_label}")
+            # ax.set_xlim(-0.05, 1.05)
+            # ax.set_ylim(-0.01, 0.31)
             ax.grid(True, alpha=0.3)
 
-            # Calculate correlation
-            if len(cov) > 2:
-                corr, p_value = pearsonr(err, cov)
-                ax.text(
-                    0.05,
-                    0.95,
-                    f"Correlation: {corr:.3f}\np-value: {p_value:.2e}",
-                    transform=ax.transAxes,
-                    verticalalignment="top",
-                    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            # 以 Y轴为例子 计算所有绘制的点
+            points = np.vstack([err, cov]).transpose()
+            # 每 interval=0.02去这个区间内 cov 的均值和方差
+            sub_points = []
+
+            err_min, err_max = np.min(err), np.max(err)
+            err_gap = (err_max - err_min) / 100
+            for e in np.arange(err_min, err_max, err_gap):
+                err_range = [e, e + err_gap]
+                err_c = (err_range[0] + err_range[1]) / 2
+                in_range = (points[:, 0] >= err_range[0]) & (
+                    points[:, 0] < err_range[1]
                 )
+                if np.any(in_range):
+                    cov_min, cov_max = (
+                        np.min(points[in_range, 1]),
+                        np.max(points[in_range, 1]),
+                    )
+                    gap = (cov_max - cov_min) / 50
+                    if gap == 0:
+                        sub_points.append([err_c, cov_min])
+                        break
+                    cnt = 1
+                    for c in np.arange(cov_min, cov_max, gap):
+                        cov_range = [c, c + gap]
+                        in_points = points[
+                            in_range
+                            & (points[:, 1] >= cov_range[0])
+                            & (points[:, 1] < cov_range[1])
+                        ]
+                        if len(in_points) >= 3:
+                            sub_points.append([err_c, np.min(in_points)])
+                            cnt -= 1
+                            if cnt == 0:
+                                break
+
+            sub_points = np.array(sub_points)
+
+            if np.any(sub_points):
+                ax.errorbar(
+                    sub_points[:, 0],
+                    sub_points[:, 1],
+                    fmt="v",
+                    color="black",
+                    alpha=0.8,
+                )
+
+            # 保存这些点
+            Obj.save(sub_points, Path(f"sub_points_{ax_label}.pkl"))
+
+            # Calculate correlation
+            # if len(cov) > 2:
+            #     corr, p_value = pearsonr(err, cov)
+            #     ax.text(
+            #         0.05,
+            #         0.95,
+            #         f"相关系数：{corr:.3f}\np值：{p_value:.2e}",
+            #         transform=ax.transAxes,
+            #         verticalalignment="top",
+            #         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            #     )
 
         plt.tight_layout()
 
@@ -106,33 +166,33 @@ class NetworkResultAnalysis:
         print(f"Analysis chart saved to: {output_path}")
 
         # Print statistics
-        print("\n=== 3-Axis Covariance vs Error Analysis ===")
-        print(f"Data points: {len(errors)}")
+        print("\n=== 三轴不确定性-误差分析 ===")
+        print(f"数据点数：{len(errors)}")
 
         for i, (ax_label, cov, err) in enumerate(zip(axis_labels, cov_data, err_data)):
-            print(f"\n{ax_label} Statistics:")
-            print(f"  Error - Mean: {np.mean(err):.6f}, Std: {np.std(err):.6f}")
-            print(f"  Error - Min: {np.min(err):.6f}, Max: {np.max(err):.6f}")
-            print(f"  Error - Median: {np.median(err):.6f}")
-            print(f"  Covariance - Mean: {np.mean(cov):.6f}, Std: {np.std(cov):.6f}")
-            print(f"  Covariance - Min: {np.min(cov):.6f}, Max: {np.max(cov):.6f}")
-            print(f"  Covariance - Median: {np.median(cov):.6f}")
+            print(f"\n{ax_label} 统计：")
+            print(f"  误差 - 均值：{np.mean(err):.6f}，标准差：{np.std(err):.6f}")
+            print(f"  误差 - 最小值：{np.min(err):.6f}，最大值：{np.max(err):.6f}")
+            print(f"  误差 - 中位数：{np.median(err):.6f}")
+            print(f"  不确定性 - 均值：{np.mean(cov):.6f}，标准差：{np.std(cov):.6f}")
+            print(f"  不确定性 - 最小值：{np.min(cov):.6f}，最大值：{np.max(cov):.6f}")
+            print(f"  不确定性 - 中位数：{np.median(cov):.6f}")
 
             if len(cov) > 2:
                 corr, p_value = pearsonr(err, cov)
-                print(f"  Correlation: {corr:.6f}, p-value: {p_value:.2e}")
+                print(f"  相关系数：{corr:.6f}，p值：{p_value:.2e}")
 
                 if abs(corr) > 0.7:
-                    strength = "Strong"
+                    strength = "强"
                 elif abs(corr) > 0.4:
-                    strength = "Moderate"
+                    strength = "中等"
                 elif abs(corr) > 0.2:
-                    strength = "Weak"
+                    strength = "弱"
                 else:
-                    strength = "Very weak or none"
+                    strength = "极弱或无"
 
-                direction = "Positive" if corr > 0 else "Negative"
-                print(f"  Strength: {strength} {direction} correlation")
+                direction = "正" if corr > 0 else "负"
+                print(f"  强度：{strength}{direction}相关")
 
         plt.show()
 

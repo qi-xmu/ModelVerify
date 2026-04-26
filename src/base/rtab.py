@@ -196,6 +196,11 @@ class RTABData:
         self.node_rots = self.node_rots * DefaultBodyRotation
         self.opt_rots = self.opt_rots * DefaultBodyRotation
 
+    def transform_global(self):
+        G2S = Rotation.from_rotvec([0, 0, 90], degrees=True)
+        self.node_ps = G2S.apply(self.node_ps)
+        self.node_rots = G2S * self.node_rots
+
     def save_csv(self, path: str | Path, using_opt: bool = False):
         # #timestamp [us],p_RS_R_x [m],p_RS_R_y [m],p_RS_R_z [m],q_RS_w [],q_RS_x [],q_RS_y [],q_RS_z [],
         header = [

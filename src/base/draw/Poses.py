@@ -83,8 +83,7 @@ def draw_trajectory_2d(
     ax.grid(True, alpha=0.3)
 
     # 确保xy轴尺度一致
-    ax.set_aspect("equal")
-
+    plt.axis("equal")
     plt.tight_layout()
 
     # 保存图像
@@ -152,7 +151,9 @@ def draw_trajectory_2d_compare(
 
     # 自动生成颜色
     if colors is None:
-        colors = plt.cm.tab10(np.linspace(0, 1, n_trajectories))  # pyright: ignore[reportAttributeAccessIssue]
+        colors = plt.cm.tab10(
+            np.linspace(0, 1, n_trajectories)
+        )  # pyright: ignore[reportAttributeAccessIssue]
 
     # 创建新的figure和axes，如果未提供
     if ax is None:
