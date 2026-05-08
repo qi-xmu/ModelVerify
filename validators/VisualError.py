@@ -22,9 +22,9 @@ from scipy.spatial.transform import Rotation
 
 from base.calibration import time
 from base.datatype import GroundTruthData, Pose, PosesData
+from base.obj import Obj
 from base.rtab import RTABData
 from base.types.navio_db import NaVIODB
-from base.obj import Obj
 
 # from base.draw.Poses import draw_trajectory_2d
 
@@ -32,9 +32,6 @@ from base.obj import Obj
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["SimSun", "Songti SC", "STSong"]
 plt.rcParams["axes.unicode_minus"] = False
-
-G2S = Pose.from_rotation(Rotation.from_rotvec([0, 0, 90], degrees=True))
-
 
 class MatchList:
     def __init__(self, mapping_file: str | Path):
@@ -135,7 +132,7 @@ def plot_results(
             ac_list,
             error_idx_list,
             gap_idx_list,
-            output_dir / "trajectory_comparison.png",
+            output_dir / f"trajectory_comparison_{label}.png",
             show,
         )
 
@@ -165,9 +162,9 @@ def process_(sensor_db_obj: NaVIODB, gt_pose: GroundTruthData):
     match_pose = gt_pose.interpolate(ref_t_us)
     sensor_pose = sensor_pose[ref_t_mask]
 
-    assert len(sensor_pose) == len(
-        match_pose
-    ), f"Sensor pose length {len(sensor_pose)} does not match match pose length {len(match_pose)}"
+    assert len(sensor_pose) == len(match_pose), (
+        f"Sensor pose length {len(sensor_pose)} does not match match pose length {len(match_pose)}"
+    )
 
     timestamps_mask = np.array(timestamps, dtype=int)[ref_t_mask]
     frames = sensor_db_obj.read_all_pointcloud_frames()
@@ -286,6 +283,8 @@ def plot_trajectory_comparison(
     gap_idx_list: list[int],
     save_path: Path,
     show: bool = False,
+    right_label: str = "点云置信度",
+    right_cmap: str = "YlGnBu_r",
 ):
     """绘制传感器轨迹对比图，左子图按误差模长着色，右子图按置信度着色"""
     fig, (ax_err, ax_ac) = plt.subplots(1, 2, figsize=(18, 8))
@@ -372,7 +371,7 @@ def plot_trajectory_comparison(
         positions[error_idx_list, 0],
         positions[error_idx_list, 1],
         c=ac_arr,
-        cmap="YlGnBu_r",
+        cmap=right_cmap,
         s=20,
         alpha=0.8,
         zorder=2,
@@ -396,10 +395,12 @@ def plot_trajectory_comparison(
         label="终点",
     )
     cbar_ac = plt.colorbar(scatter_ac, ax=ax_ac)
-    cbar_ac.set_label("点云置信度", fontsize=11)
+    cbar_ac.set_label(right_label, fontsize=11)
     ax_ac.set_xlabel("X (m)", fontsize=11)
     ax_ac.set_ylabel("Y (m)", fontsize=11)
-    ax_ac.set_title("传感器轨迹（按置信度着色）", fontsize=13, fontweight="bold")
+    ax_ac.set_title(
+        f"传感器轨迹（按{right_label}着色）", fontsize=13, fontweight="bold"
+    )
     ax_ac.legend()
     ax_ac.axis("equal")
     ax_ac.grid(True, alpha=0.3)
@@ -412,7 +413,11 @@ def plot_trajectory_comparison(
 
 
 def plot_error_vs_confidence(
-    err_arr: NDArray, ac_list: list[float], save_path: Path, show: bool = False
+    err_arr: NDArray,
+    ac_list: list[float],
+    save_path: Path,
+    show: bool = False,
+    x_label: str = "置信度",
 ):
     """绘制误差与点云置信度的相关性散点图，分三轴"""
     ac_arr = np.array(ac_list)
@@ -437,9 +442,9 @@ def plot_error_vs_confidence(
             )
         # ax.set_ylim(-1.05, 1.05)
         ax.set_ylim(-0.05, 2.05)
-        ax.set_xlabel("置信度", fontsize=11)
+        ax.set_xlabel(x_label, fontsize=11)
         ax.set_ylabel(f"{label}轴误差 (m)", fontsize=11)
-        ax.set_title(f"{label}轴误差 vs 置信度", fontsize=12, fontweight="bold")
+        ax.set_title(f"{label}轴误差 vs {x_label}", fontsize=12, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
@@ -503,6 +508,7 @@ def plot_error_merged_vs_confidence(
     save_path: Path,
     show: bool = False,
     upper_boundary: NDArray | None = None,
+    x_label: str = "置信度",
 ):
     """绘制三轴误差合并到一张图中，按颜色区分"""
     ac_arr = np.array(ac_list)
@@ -527,9 +533,9 @@ def plot_error_merged_vs_confidence(
             label="上边界",
         )
 
-    ax.set_xlabel("置信度", fontsize=11)
+    ax.set_xlabel(x_label, fontsize=11)
     ax.set_ylabel("误差 (m)", fontsize=11)
-    ax.set_title("三轴误差 vs 置信度", fontsize=13, fontweight="bold")
+    ax.set_title(f"三轴误差 vs {x_label}", fontsize=13, fontweight="bold")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -555,7 +561,7 @@ def fit_boundary_inv(upper_boundary: NDArray) -> tuple[float, float, NDArray] | 
     ransac = RANSACRegressor(random_state=42)
     ransac.fit(x_pos[mask].reshape(-1, 1), inv_y)
     m = ransac.estimator_.coef_.item()  # pyright: ignore[reportAttributeAccessIssue]
-    c = ransac.estimator_.intercept_.item()  # pyright: ignore[reportAttributeAccessIssue]
+    c = ransac.estimator_.intercept_.item()
     A = 1.0 / m
     B = c / m
     inlier_mask = ransac.inlier_mask_
@@ -672,7 +678,11 @@ def plot_error_boundary_classify(
 
 
 if __name__ == "__main__":
-    matchs = MatchList("/Users/qi/Resources/实验数据整理/点云视觉数据/mapping_sm.csv")
+    label = "sm"
+    fit_res_path = Path("results") / f"boundary_fit_{label}.pkl"
+    matchs = MatchList(
+        f"/Users/qi/Resources/实验数据整理/点云视觉数据/mapping_{label}.csv"
+    )
     all_error_list = []
     all_ac_list = []
     for cdb, gt_pose in matchs.iter_object():
@@ -687,9 +697,37 @@ if __name__ == "__main__":
         else:
             result = process_(cdb, gt_pose)
             Obj.save(result, result_path)
+
         plot_results(output_dir, **result)
         all_error_list.extend(result["error_list"])
         all_ac_list.extend(result["ac_list"])
+
+        if fit_res_path.exists():
+            print(f"[{cdb.name}] 加载拟合结果")
+            fit_result = Obj.load(fit_res_path)
+            A, B = fit_result["A"], fit_result["B"]
+            noise_list = [A / (ac + B) for ac in result["ac_list"]]
+            sensor_pose = result["sensor_pose"]
+            match_pose = result["match_pose"]
+            positions = np.array(
+                [sensor_pose.get_pose(i).p for i in range(len(sensor_pose))]
+            )
+            gt_positions = np.array(
+                [match_pose.get_pose(i).p for i in range(len(match_pose))]
+            )
+            err_arr = np.array(result["error_list"])
+            err_norms = np.linalg.norm(err_arr, axis=1)
+            plot_trajectory_comparison(
+                positions,
+                gt_positions,
+                err_norms,
+                noise_list,
+                result["error_idx_list"],
+                result["gap_idx_list"],
+                output_dir / "trajectory_comparison_noise.png",
+                right_label="噪声估计",
+                right_cmap="YlGnBu",
+            )
 
     all_err_arr = np.array(all_error_list)
     all_err_arr -= np.mean(all_err_arr, axis=0)
@@ -697,7 +735,7 @@ if __name__ == "__main__":
     plot_error_vs_confidence(
         all_err_arr,
         all_ac_list,
-        Path("results/all_abs_error_vs_confidence_sm.png"),
+        Path(f"results/all_abs_error_vs_confidence_{label}.png"),
     )
 
     # 合并三轴误差与置信度，提取共同上边界
@@ -713,7 +751,7 @@ if __name__ == "__main__":
     plot_error_merged_vs_confidence(
         all_err_arr,
         all_ac_list,
-        Path("results/all_abs_error_merged_vs_confidence_sm.png"),
+        Path(f"results/all_abs_error_merged_vs_confidence_{label}.png"),
         upper_boundary=upper_boundary,
     )
 
@@ -727,7 +765,7 @@ if __name__ == "__main__":
                 A,
                 B,
                 inlier_mask,
-                Path("results/boundary_fit_sm.png"),
+                Path(f"results/boundary_fit_{label}.png"),
             )
             boundary_vals = A / (all_ac_arr + B)
             merged_err_all = np.concatenate(
@@ -745,5 +783,7 @@ if __name__ == "__main__":
                 all_ac_list,
                 A,
                 B,
-                Path("results/boundary_classify_sm.png"),
+                Path(f"results/boundary_classify_{label}.png"),
             )
+
+            Obj.save({"A": A, "B": B}, fit_res_path)

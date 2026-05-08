@@ -2,8 +2,9 @@ import sqlite3
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
-from base.datatype import CameraData, ImuData
+from base.datatype import CameraData, ImuData, Pose
 from base.types.type_pointcloud import Point, PointCloudFrame
 
 
@@ -138,6 +139,48 @@ class NaVIODB:
         _track_state = data[:16]
 
         return CameraData.from_raw(data)
+
+    def pose_fix_convert(self):
+        Y2Z_UP = Rotation.from_rotvec([90, 0, 0], degrees=True)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT DISTINCT timestamp_ns, p_RS_R_x, p_RS_R_y, p_RS_R_z, q_RS_w, q_RS_x, q_RS_y, q_RS_z,
+                   p_cs_c_x, p_cs_c_y, p_cs_c_z, q_cs_w, q_cs_x, q_cs_y, q_cs_z,
+                   t_system_ns, tracking_state
+            FROM poses
+            WHERE p_RS_R_x IS NOT NULL
+            ORDER BY timestamp_ns
+            """
+        )
+        rows = cursor.fetchall()
+
+        for row in rows:
+            timestamp = row[0]
+            sensor_pose_p = np.array(row[1:4])
+            sensor_pose_rot = Rotation.from_quat(row[4:8], scalar_first=True)
+
+            fix_sensor_rot = Y2Z_UP * sensor_pose_rot
+            fix_sensor_p = Y2Z_UP.apply(sensor_pose_p)
+
+            fix_row = (
+                fix_sensor_p.tolist()
+                + fix_sensor_rot.as_quat(scalar_first=True).tolist()
+            )
+
+            # 将 fix_row 重新更新数据库中 p_RS_R_x, p_RS_R_y, p_RS_R_z, q_RS_w, q_RS_x, q_RS_y, q_RS_z
+            cursor.execute(
+                """
+                UPDATE poses
+                SET p_RS_R_x = ?, p_RS_R_y = ?, p_RS_R_z = ?, q_RS_w = ?, q_RS_x = ?, q_RS_y = ?, q_RS_z = ?
+                WHERE timestamp_ns = ?
+                """,
+                fix_row + [timestamp],
+            )
+            self.conn.commit()
+
+            # print(f"Fix {timestamp}: {sensor_pose_p} -> {fix_sensor_p}")
 
     def read_cam_data_in_range(self, start_time_ns: int, end_time_ns: int):
         cursor = self.conn.cursor()

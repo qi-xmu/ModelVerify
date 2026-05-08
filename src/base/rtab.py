@@ -155,6 +155,12 @@ class RTABData:
         opt_t_us = [self.node_t_us[self.node_ids.index(idx)] for idx in self.opt_ids]
         self.opt_t_us = np.array(opt_t_us)
 
+    def get_links(self) -> list[tuple[int, int]]:
+        """获取所有 Link 边（from_id, to_id）。"""
+        return self.cursor.execute(
+            "SELECT from_id, to_id FROM Link"
+        ).fetchall()
+
     def load_node_data(self):
         results = self.cursor.execute("""
             SELECT id, stamp, pose
