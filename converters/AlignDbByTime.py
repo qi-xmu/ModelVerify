@@ -17,9 +17,10 @@ import argparse
 import csv
 import re
 import sys
-import unicodedata
 from datetime import datetime
 from pathlib import Path
+
+from base.tab_show import display_width, pad_center, pad_left
 
 # 阈值常量
 MAX_DURATION_SEC = 1800   # 录制时长超过 30 分钟警告
@@ -73,31 +74,6 @@ def collect_phone_files(phone_dir: Path) -> list[tuple[datetime, Path]]:
             entries.append((ts, db_files[0]))
     entries.sort(key=lambda x: x[0])
     return entries
-
-
-def display_width(text: str) -> int:
-    """计算字符串的终端显示宽度（CJK字符宽度=2, ASCII=1）"""
-    w = 0
-    for ch in text:
-        ea = unicodedata.east_asian_width(ch)
-        w += 2 if ea in ("W", "F") else 1
-    return w
-
-
-def pad_center(text: str, width: int, fill: str = " ") -> str:
-    """按显示宽度居中对齐"""
-    dw = display_width(text)
-    if dw >= width:
-        return text
-    left = (width - dw) // 2
-    right = width - dw - left
-    return fill * left + text + fill * right
-
-
-def pad_left(text: str, width: int, fill: str = " ") -> str:
-    """按显示宽度左对齐（右补空格）"""
-    dw = display_width(text)
-    return text + fill * (width - dw) if dw < width else text
 
 
 def fmt_duration(seconds: float) -> str:

@@ -4,7 +4,6 @@
 批量处理目录时输出汇总统计表格。
 """
 
-import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from base.rtab import RTABData
+from base.tab_show import display_width, pad_center
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["SimSun", "Songti SC", "STSong"]
@@ -22,31 +22,6 @@ def _compute_length(ps: np.ndarray) -> float:
     if len(ps) < 2:
         return 0.0
     return float(np.sum(np.linalg.norm(np.diff(ps, axis=0), axis=1)))
-
-
-def _display_width(text: str) -> int:
-    """计算字符串的终端显示宽度（CJK字符宽度=2, ASCII=1）"""
-    w = 0
-    for ch in text:
-        ea = unicodedata.east_asian_width(ch)
-        w += 2 if ea in ("W", "F") else 1
-    return w
-
-
-def _pad_center(text: str, width: int, fill: str = " ") -> str:
-    """按显示宽度居中对齐"""
-    dw = _display_width(text)
-    if dw >= width:
-        return text
-    left = (width - dw) // 2
-    right = width - dw - left
-    return fill * left + text + fill * right
-
-
-def _pad_right(text: str, width: int, fill: str = " ") -> str:
-    """按显示宽度右对齐"""
-    dw = _display_width(text)
-    return text + fill * (width - dw) if dw < width else text
 
 
 def plot_trajectory(rtab: RTABData, save_path: Path):
@@ -173,9 +148,9 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
     EMPTY = "-"
 
     table_header = " | ".join(
-        _pad_center(COLS[k], COL_W[k]) for k in range(len(COLS))
+        pad_center(COLS[k], COL_W[k]) for k in range(len(COLS))
     )
-    banner_w = max(_display_width(table_header), 60)
+    banner_w = max(display_width(table_header), 60)
     sep = "-" * banner_w
 
     print("\n" + sep)
@@ -201,7 +176,7 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
             str(s["opt_count"]) if s["opt_count"] > 0 else EMPTY,
             fmt_val(s["opt_len_m"], 2),
         ]
-        cells = [_pad_center(values[k], COL_W[k]) for k in range(len(COLS))]
+        cells = [pad_center(values[k], COL_W[k]) for k in range(len(COLS))]
         print(" | ".join(cells))
 
     print(sep)
@@ -222,7 +197,7 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
         str(total_opt),
         f"{total_opt_len:.1f}",
     ]
-    row = [_pad_center(summary_values[k], COL_W[k]) for k in range(len(COLS))]
+    row = [pad_center(summary_values[k], COL_W[k]) for k in range(len(COLS))]
     print(" | ".join(row))
     print(sep + "\n")
 
