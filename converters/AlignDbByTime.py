@@ -17,6 +17,7 @@ import argparse
 import csv
 import re
 import sys
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -74,6 +75,31 @@ def collect_phone_files(phone_dir: Path) -> list[tuple[datetime, Path]]:
     return entries
 
 
+def display_width(text: str) -> int:
+    """计算字符串的终端显示宽度（CJK字符宽度=2, ASCII=1）"""
+    w = 0
+    for ch in text:
+        ea = unicodedata.east_asian_width(ch)
+        w += 2 if ea in ("W", "F") else 1
+    return w
+
+
+def pad_center(text: str, width: int, fill: str = " ") -> str:
+    """按显示宽度居中对齐"""
+    dw = display_width(text)
+    if dw >= width:
+        return text
+    left = (width - dw) // 2
+    right = width - dw - left
+    return fill * left + text + fill * right
+
+
+def pad_left(text: str, width: int, fill: str = " ") -> str:
+    """按显示宽度左对齐（右补空格）"""
+    dw = display_width(text)
+    return text + fill * (width - dw) if dw < width else text
+
+
 def fmt_duration(seconds: float) -> str:
     """格式化秒数为可读字符串"""
     if seconds < 0:
@@ -96,9 +122,17 @@ def validate_and_report(
     rows = []
     has_error = False
 
-    print("\n" + "=" * 90)
+    # 列宽定义（按终端显示宽度）
+    COL_W = [3, 16, 20, 20, 20, 8]  # 行, GT, HW, SM, RM, 偏差
+    COLS = ["行", "GT结束时间", "HW开始(时长)", "SM开始(时长)", "RM开始(时长)", "设备偏差"]
+    table_header = " | ".join(
+        pad_center(COLS[k], COL_W[k]) for k in range(len(COLS))
+    ) + " | 状态"
+    banner_width = max(display_width(table_header), 70)
+
+    print("\n" + "=" * banner_width)
     print("校验报告: GT 文件名=结束时间, 手机文件夹=开始时间")
-    print("=" * 90)
+    print("=" * banner_width)
 
     for i in range(max_rows):
         gt_entries = sources.get("GT", [])
@@ -150,10 +184,10 @@ def validate_and_report(
         row_data["status"] = " | ".join(status_parts) if status_parts else "✓"
         rows.append(row_data)
 
-    # 打印逐行报告
-    header = f"{'行':>3} | {'GT结束时间':^19} | {'HW开始(时长)':^22} | {'SM开始(时长)':^22} | {'RM开始(时长)':^22} | {'设备偏差':^8} | 状态"
-    print(header)
-    print("-" * len(header))
+    # 打印表头
+    sep_line = "-" * max(display_width(table_header), 70)
+    print(table_header)
+    print(sep_line)
 
     for row in rows:
         i = row["index"]
@@ -161,27 +195,27 @@ def validate_and_report(
         gt_end = gt_entries[i - 1][0] if i - 1 < len(gt_entries) else None
         gt_str = gt_end.strftime("%m-%d %H:%M:%S") if gt_end else "-"
 
-        parts = [f"{gt_str}"]
-
+        values = [
+            str(i),
+            gt_str,
+        ]
         for src in phone_sources:
             start = row.get(f"{src}_start")
             dur = row.get(f"{src}_duration")
             if start is not None and dur is not None:
-                parts.append(f"{start.strftime('%H:%M:%S')}({fmt_duration(dur)})")
+                values.append(f"{start.strftime('%H:%M:%S')}({fmt_duration(dur)})")
             elif start is not None:
-                parts.append(f"{start.strftime('%H:%M:%S')}(无GT)")
+                values.append(f"{start.strftime('%H:%M:%S')}(无GT)")
             else:
-                parts.append("-")
+                values.append("-")
 
         spread = row.get("device_spread")
-        spread_str = fmt_duration(spread) if spread is not None else "-"
+        values.append(fmt_duration(spread) if spread is not None else "-")
 
-        status = row["status"]
+        cells = [pad_center(values[k], COL_W[k]) for k in range(len(COLS))]
+        print(" | ".join(cells) + " | " + row["status"])
 
-        line = f"{i:>3} | {parts[0]:^19} | {parts[1]:^22} | {parts[2]:^22} | {parts[3]:^22} | {spread_str:^8} | {status}"
-        print(line)
-
-    print("-" * 90)
+    print(sep_line)
 
     # 统计
     total = len(rows)
@@ -194,7 +228,7 @@ def validate_and_report(
         print("❌ 存在时间倒挂行，匹配可能不正确!")
     else:
         print("✓ 所有行通过基本校验")
-    print("=" * 90 + "\n")
+    print("=" * max(display_width(table_header), 70) + "\n")
 
     return rows, has_error
 
