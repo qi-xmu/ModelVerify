@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from scipy.spatial.transform import Rotation
 
 from base.calibration import time
 from base.datatype import GroundTruthData, Pose, PosesData
@@ -32,6 +31,7 @@ from base.types.navio_db import NaVIODB
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["SimSun", "Songti SC", "STSong"]
 plt.rcParams["axes.unicode_minus"] = False
+
 
 class MatchList:
     def __init__(self, mapping_file: str | Path):
@@ -560,8 +560,8 @@ def fit_boundary_inv(upper_boundary: NDArray) -> tuple[float, float, NDArray] | 
     inv_y = (1.0 / y_pos[mask]).reshape(-1, 1)
     ransac = RANSACRegressor(random_state=42)
     ransac.fit(x_pos[mask].reshape(-1, 1), inv_y)
-    m = ransac.estimator_.coef_.item()  # pyright: ignore[reportAttributeAccessIssue]
-    c = ransac.estimator_.intercept_.item()
+    m = ransac.estimator_.coef_.item()
+    c = ransac.estimator_.intercept_.item()  # ty: ignore
     A = 1.0 / m
     B = c / m
     inlier_mask = ransac.inlier_mask_

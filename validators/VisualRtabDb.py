@@ -54,9 +54,18 @@ def plot_trajectory(rtab: RTABData, save_path: Path):
     ax2.set_zlabel("Z (m)")
     ax2.set_title("轨迹 3D 视图")
     ax2.legend()
+    # 3D 等比例尺
+    pts = node_ps if opt_ps is None else np.vstack([node_ps, opt_ps])
+    ranges = pts.max(axis=0) - pts.min(axis=0)
+    mid = pts.min(axis=0) + ranges / 2
+    max_range = ranges.max() / 2
+    ax2.set_xlim(mid[0] - max_range, mid[0] + max_range)
+    ax2.set_ylim(mid[1] - max_range, mid[1] + max_range)
+    ax2.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
     fig.tight_layout()
     fig.savefig(save_path, dpi=300)
+    plt.close(fig)
     print(f"轨迹图已保存至 {save_path}")
 
 
@@ -93,18 +102,20 @@ def plot_link_graph(rtab: RTABData, save_path: Path):
 
     fig.tight_layout()
     fig.savefig(save_path, dpi=300)
+    plt.close(fig)
     print(f"连接图已保存至 {save_path}")
 
 
-def visualize(db_path: Path, output_dir: Path | None = None):
+def visualize(db_path: Path, save_csv: bool = False):
     name = db_path.stem
-    if output_dir is None:
-        output_dir = Path("results") / name
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = db_path.parent
 
     rtab = RTABData(db_path)
     rtab.transform_local()
     rtab.transform_global()
+
+    if save_csv:
+        rtab.save_csv(output_dir / f"{name}.csv", using_opt=True)
 
     node_len = _compute_length(rtab.node_ps)
     opt_len = _compute_length(rtab.opt_ps) if rtab.opt_ids else None
@@ -118,18 +129,28 @@ def visualize(db_path: Path, output_dir: Path | None = None):
         print(f"  Optimized 数量: {len(rtab.opt_ids)}")
         print(f"  Optimized 轨迹长度: {opt_len:.2f} m")
 
-    plot_trajectory(rtab, output_dir / "trajectory.png")
-    plot_link_graph(rtab, output_dir / "link_graph.png")
+    plot_trajectory(rtab, output_dir / f"{name}_trajectory.png")
+    plot_link_graph(rtab, output_dir / f"{name}_link_graph.png")
 
     rtab.conn.close()
-    plt.show()
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("用法: uv run python validators/VisualRtabDb.py <db_path>")
+        print("用法: uv run python validators/VisualRtabDb.py <db_path_or_dir> [--csv]")
         sys.exit(1)
 
-    visualize(Path(sys.argv[1]))
+    save_csv = "--csv" in sys.argv
+    path = Path(sys.argv[1])
+    if path.is_dir():
+        db_files = sorted(path.glob("*.db"))
+        if not db_files:
+            print(f"目录 {path} 中未找到 .db 文件")
+            sys.exit(1)
+        print(f"找到 {len(db_files)} 个数据库文件\n")
+        for db_file in db_files:
+            visualize(db_file, save_csv=save_csv)
+    else:
+        visualize(path, save_csv=save_csv)
