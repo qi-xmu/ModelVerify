@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""
+轨迹绘制对比 — GT / Fusion / Camera 轨迹 Rerun 可视化
+
+用法:
+    uv run python visualizers/DrawTrajCompare.py -u <db_or_csv_or_results.csv>
+    uv run python visualizers/DrawTrajCompare.py -u <results.csv> --session 1 --device SM
+"""
+
+from pathlib import Path
+
+import base.rerun_ext as bre
+from base.args_parser import DatasetArgsParser
+from base.obj import Obj
+from base.scene import FusionIndex, Session, SessionObj
+from base.scene.cal import TrajEvaluator, export_csv
+
+
+def main():
+    dap = DatasetArgsParser()
+    dap.parser.add_argument("--session", type=int, default="1", help="指定场次 ID")
+    dap.parser.add_argument(
+        "--device", type=str, default="SM", help="指定设备 (HW/SM/RM)"
+    )
+    dap.parse()
+
+    def action(session: Session):
+        te_temp_file = Path(session.parent_dir) / f"TE_ALG_{session.label}.pkl"
+
+        if te_temp_file.exists() and not dap.regen:
+            te = Obj.load(te_temp_file)
+            obj = te.obj
+        else:
+            obj = SessionObj(session)
+            obj.align_time(rate=1)
+            obj.align_space()
+            te = TrajEvaluator(obj)
+            Obj.save(te, te_temp_file)
+
+        te.report()
+        if dap.visual:
+            bre.rerun_init(session.label)
+            bre.send_pose_data(obj.gt_pose, "Groundtruth", color=[192, 72, 72])
+            bre.send_pose_data(obj.fusion_pose, "Fusion", color=[72, 192, 72])
+            bre.send_pose_data(obj.cam_pose, "Camera", color=[72, 72, 192])
+            if obj.extra_pose is not None:
+                bre.send_pose_data(obj.extra_pose, "Extra", color=[192, 192, 72])
+
+            print(
+                f"[{session.label}] GT={len(obj.gt_pose)}, Fusion={len(obj.fusion_pose)}"
+            )
+
+        return te
+
+    if dap.unit:
+        path = Path(dap.unit)
+        s_id = dap.args.session
+        device = dap.args.device
+        index = FusionIndex.from_scene(path) if path.is_dir() else FusionIndex(path)
+        session = index[(s_id, device)]
+        action(session)
+    elif dap.dataset:
+        path = Path(dap.dataset)
+        index = FusionIndex.from_scene(path) if path.is_dir() else FusionIndex(path)
+        te_list = [action(s) for s in index]
+        output_dir = path if path.is_dir() else path.parent
+        export_csv(te_list, output_dir)
+
+    else:
+        dap.parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

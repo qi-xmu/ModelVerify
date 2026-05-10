@@ -560,8 +560,8 @@ def fit_boundary_inv(upper_boundary: NDArray) -> tuple[float, float, NDArray] | 
     inv_y = (1.0 / y_pos[mask]).reshape(-1, 1)
     ransac = RANSACRegressor(random_state=42)
     ransac.fit(x_pos[mask].reshape(-1, 1), inv_y)
-    m = ransac.estimator_.coef_.item()
-    c = ransac.estimator_.intercept_.item()  # ty: ignore
+    m = ransac.estimator_.coef_.item()  # type: ignore
+    c = ransac.estimator_.intercept_.item()  # type: ignore
     A = 1.0 / m
     B = c / m
     inlier_mask = ransac.inlier_mask_

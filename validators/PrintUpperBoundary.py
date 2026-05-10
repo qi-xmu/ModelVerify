@@ -11,11 +11,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from sklearn.linear_model import RANSACRegressor
+
 from VisualError import (
     MatchList,
     extract_upper_bound,
-    fit_boundary_inv,
 )
 
 from base.obj import Obj
@@ -89,14 +88,24 @@ def print_upper_boundary(label: str):
 
     ax.scatter(merged_ac, merged_err, s=2, alpha=0.3, color="lightgray", label="数据点")
     ax.scatter(
-        upper_boundary[:, 0], upper_boundary[:, 1],
-        s=20, c="black", marker="^", alpha=0.8,
-        zorder=5, label=f"上界点（{len(upper_boundary)}）",
+        upper_boundary[:, 0],
+        upper_boundary[:, 1],
+        s=20,
+        c="black",
+        marker="^",
+        alpha=0.8,
+        zorder=5,
+        label=f"上界点（{len(upper_boundary)}）",
     )
 
     x_curve = np.linspace(upper_boundary[:, 0].min(), upper_boundary[:, 0].max(), 300)
-    ax.plot(x_curve, model_frc(x_curve, Af, Bf, Cf), "r-", linewidth=2,
-            label=f"分式: {Af:.4f}/(x + {Bf:.4f}) + {Cf:.4f})")
+    ax.plot(
+        x_curve,
+        model_frc(x_curve, Af, Bf, Cf),
+        "r-",
+        linewidth=2,
+        label=f"分式: {Af:.4f}/(x + {Bf:.4f}) + {Cf:.4f})",
+    )
 
     ax.axhline(2, color="gray", linestyle=":", linewidth=0.8, alpha=0.5)
 

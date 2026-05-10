@@ -1,12 +1,16 @@
 from pathlib import Path
 
 import numpy as np
+from matplotlib import pyplot as plt
 from numpy._typing import NDArray
 from scipy.spatial.transform import Rotation
-from matplotlib import pyplot as plt
 
 from base.datatype import PosesData
 from base.interpolate import get_time_series
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.serif"] = ["SimSun", "Songti SC", "STSong"]
+plt.rcParams["axes.unicode_minus"] = False
 
 
 def _get_angvels(t_us: NDArray, rots: Rotation, step: int = 1):
@@ -73,7 +77,8 @@ def match21(
         ax_after.legend()
         ax_after.set_xlabel("时间（秒）")
         ax_after.set_ylabel("角速度（rad/s）")
-        ax_after.set_title("对齐后")
+        offset_s = t21_us / 1e6
+        ax_after.set_title(f"对齐后（偏移: {offset_s:+.3f} s）")
         fig.tight_layout()
         plt.savefig(check_plot_path, dpi=300)
         plt.close(fig)

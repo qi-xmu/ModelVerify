@@ -8,7 +8,7 @@ import pandas as pd
 import yaml
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation
-from sophuspy import SE3
+from sophuspy import SE3  # ty: ignore
 
 from base.interpolate import get_time_series, interpolate_vector3, slerp_rotation
 from base.rtab import RTABData
@@ -135,6 +135,9 @@ class PosesData:
     def reset_start(self):
         """重置出发点"""
         self.ps -= self.ps[0]
+
+    def reset_time(self):
+        self.t_us -= self.t_us[0]
 
     @property
     def rate(self):
@@ -313,6 +316,13 @@ class GroundTruthData(PosesData):
         raw = pd.read_csv(path).to_numpy()
         return GroundTruthData.from_raw(raw)
 
+    @staticmethod
+    def from_rtab(rtab: RTABData, using_opt: bool = False):
+        t_us = rtab.opt_t_us if using_opt else rtab.node_t_us
+        ps = rtab.opt_ps if using_opt else rtab.node_ps
+        rots = rtab.opt_rots if using_opt else rtab.node_rots
+        return GroundTruthData(t_us, rots, ps)
+
 
 class CameraColumn:
     """
@@ -352,9 +362,6 @@ class CameraData(PosesData):
         t_us = raw[:, 0]
         trans = raw[:, 1:4]
         quats = raw[:, 4:8]
-        t_system_us = raw[:, 15]
-
-        t_us = t_us - t_us[0] + t_system_us[0]
         rots = Rotation.from_quat(quats, scalar_first=True)
 
         return CameraData(t_us, rots, trans)
@@ -366,19 +373,22 @@ class FusionData(PosesData):
     """
 
     @staticmethod
-    def from_raw(raw: NDArray):
-        t_us = raw[:, 0]
-        trans = raw[:, 1:4]
-        quats = raw[:, 4:8]
-        # cam_trans = raw[:, 8:11]
-        # cam_quats = raw[:, 11:15]
+    def from_csv(path: Path):
+        df = pd.read_csv(path).drop_duplicates(CameraColumn.t)
+        t_us = df[CameraColumn.t].to_numpy().flatten()
+        trans = df[CameraColumn.ps].to_numpy()
+        quats = df[CameraColumn.qs].to_numpy()
         rots = Rotation.from_quat(quats, scalar_first=True)
         return FusionData(t_us, rots, trans)
 
     @staticmethod
-    def from_csv(path: Path):
-        raw = pd.read_csv(path).drop_duplicates(CameraColumn.t).to_numpy()
-        return FusionData.from_raw(raw)
+    def from_csv_cam(path: Path):
+        df = pd.read_csv(path).drop_duplicates(CameraColumn.t)
+        t_us = df[CameraColumn.t].to_numpy().flatten()
+        trans = df[CameraColumn.pc].to_numpy()
+        quats = df[CameraColumn.qc].to_numpy()
+        rots = Rotation.from_quat(quats, scalar_first=True)
+        return FusionData(t_us, rots, trans)
 
 
 @dataclass

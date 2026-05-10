@@ -27,9 +27,6 @@
     --models_path: 指定模型文件夹路径（默认为"models"）
 """
 
-import numpy as np
-from scipy.spatial.transform import Rotation
-
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
 from base.datatype import (
@@ -37,15 +34,9 @@ from base.datatype import (
     DeviceDataset,
     GroundTruthData,
     ImuData,
-    Pose,
     UnitData,
 )
-
 from base.interpolate import get_time_series
-
-# 真值的Body坐标系和Sensor的Body坐标系存在的固定插值
-DefaultBodyRotation = Rotation.from_rotvec([0, -90, 0], degrees=True)
-DefaultBodyTransform = Pose(DefaultBodyRotation, np.zeros(3))
 
 
 def main():

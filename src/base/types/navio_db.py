@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from base.datatype import CameraData, ImuData, Pose
+from base.datatype import CameraData, ImuData
 from base.types.type_pointcloud import Point, PointCloudFrame
 
 
@@ -20,7 +20,7 @@ class NaVIODB:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self):
         self.close()
 
     # ─── IMU ───────────────────────────────────────────────────────
@@ -114,8 +114,7 @@ class NaVIODB:
         cursor.execute(
             """
             SELECT DISTINCT timestamp_ns, p_RS_R_x, p_RS_R_y, p_RS_R_z, q_RS_w, q_RS_x, q_RS_y, q_RS_z,
-                   p_cs_c_x, p_cs_c_y, p_cs_c_z, q_cs_w, q_cs_x, q_cs_y, q_cs_z,
-                   t_system_ns, tracking_state
+                   p_cs_c_x, p_cs_c_y, p_cs_c_z, q_cs_w, q_cs_x, q_cs_y, q_cs_z
             FROM poses
             WHERE p_RS_R_x IS NOT NULL
             ORDER BY timestamp_ns
@@ -124,19 +123,15 @@ class NaVIODB:
         rows = cursor.fetchall()
 
         if not rows:
-            print("Warning: No pose data found in database (poses table is empty)")
-            return None
+            raise ValueError("No pose data found in database (poses table is empty)")
 
         data = np.array(rows)
         # ns to us
         data[:, 0] = data[:, 0] / 1000
-        data[:, 15] = data[:, 15] / 1000
 
         # 检查0列是否包含重复行
         _, unique_indices = np.unique(data[:, 0], return_index=True)
         data = data[np.sort(unique_indices)]
-
-        _track_state = data[:16]
 
         return CameraData.from_raw(data)
 

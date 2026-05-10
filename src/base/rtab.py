@@ -11,7 +11,10 @@ from scipy.spatial.transform import Rotation
 from base.interpolate import interpolate_vector3, slerp_rotation
 
 # 对其IMU矩阵
-DefaultBodyRotation = Rotation.from_rotvec([0, -90, 0], degrees=True)
+# local
+S2G = Rotation.from_rotvec([0, -90, 0], degrees=True)
+# global
+G2S = Rotation.from_rotvec([0, 0, 90], degrees=True)
 
 
 class RTABData:
@@ -157,9 +160,7 @@ class RTABData:
 
     def get_links(self) -> list[tuple[int, int]]:
         """获取所有 Link 边（from_id, to_id）。"""
-        return self.cursor.execute(
-            "SELECT from_id, to_id FROM Link"
-        ).fetchall()
+        return self.cursor.execute("SELECT from_id, to_id FROM Link").fetchall()
 
     def load_node_data(self):
         results = self.cursor.execute("""
@@ -199,11 +200,10 @@ class RTABData:
         self.t_sys_us = t_new_us
 
     def transform_local(self):
-        self.node_rots = self.node_rots * DefaultBodyRotation
-        self.opt_rots = self.opt_rots * DefaultBodyRotation
+        self.node_rots = self.node_rots * S2G
+        self.opt_rots = self.opt_rots * S2G
 
     def transform_global(self):
-        G2S = Rotation.from_rotvec([0, 0, 90], degrees=True)
         self.node_ps = G2S.apply(self.node_ps)
         self.node_rots = G2S * self.node_rots
         if self.opt_ps is not None:

@@ -141,8 +141,8 @@ def visualize(db_path: Path, save_csv: bool = False) -> dict[str, Any]:
     return stats
 
 
-def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
-    """打印所有 db 文件的汇总统计表格"""
+def print_summary_table(all_stats: list[dict[str, Any]]) -> str:
+    """打印所有 db 文件的汇总统计表格，返回报告文本"""
     COL_W = [25, 6, 7, 6, 8, 7, 8]  # 文件名, 节点, 时长, 帧率, 轨迹, Opt数, Opt轨迹
     COLS = ["文件名", "节点", "时长(s)", "帧率", "轨迹(m)", "Opt数", "Opt轨(m)"]
     EMPTY = "-"
@@ -153,11 +153,7 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
     banner_w = max(display_width(table_header), 60)
     sep = "-" * banner_w
 
-    print("\n" + sep)
-    print("RTAB-Map 轨迹统计汇总")
-    print(sep)
-    print(table_header)
-    print(sep)
+    lines = ["", sep, "RTAB-Map 轨迹统计汇总", sep, table_header, sep]
 
     def fmt_val(v: Any, precision: int = 1) -> str:
         if v is None or v == 0:
@@ -177,19 +173,20 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
             fmt_val(s["opt_len_m"], 2),
         ]
         cells = [pad_center(values[k], COL_W[k]) for k in range(len(COLS))]
-        print(" | ".join(cells))
+        lines.append(" | ".join(cells))
 
-    print(sep)
+    lines.append(sep)
 
-    # 汇总
-    total_nodes = sum(s["node_count"] for s in all_stats)
-    total_dur = sum(s["duration_s"] for s in all_stats)
-    total_node_len = sum(s["node_len_m"] for s in all_stats)
-    total_opt = sum(s["opt_count"] for s in all_stats)
-    total_opt_len = sum(s["opt_len_m"] for s in all_stats if s["opt_len_m"] is not None)
+    # 汇总（仅有效数据，排除名称含 "no" 的文件）
+    valid_stats = [s for s in all_stats if "no" not in s["name"]]
+    total_nodes = sum(s["node_count"] for s in valid_stats)
+    total_dur = sum(s["duration_s"] for s in valid_stats)
+    total_node_len = sum(s["node_len_m"] for s in valid_stats)
+    total_opt = sum(s["opt_count"] for s in valid_stats)
+    total_opt_len = sum(s["opt_len_m"] for s in valid_stats if s["opt_len_m"] is not None)
 
     summary_values = [
-        f"合计({len(all_stats)}文件)",
+        f"合计({len(valid_stats)}/{len(all_stats)}文件)",
         str(total_nodes),
         f"{total_dur:.0f}",
         "-",
@@ -198,8 +195,12 @@ def print_summary_table(all_stats: list[dict[str, Any]]) -> None:
         f"{total_opt_len:.1f}",
     ]
     row = [pad_center(summary_values[k], COL_W[k]) for k in range(len(COLS))]
-    print(" | ".join(row))
-    print(sep + "\n")
+    lines.append(" | ".join(row))
+    lines.append(sep)
+
+    report = "\n".join(lines)
+    print(report + "\n")
+    return report
 
 
 if __name__ == "__main__":
@@ -221,6 +222,9 @@ if __name__ == "__main__":
         for db_file in db_files:
             stats = visualize(db_file, save_csv=save_csv)
             all_stats.append(stats)
-        print_summary_table(all_stats)
+        report = print_summary_table(all_stats)
+        txt_path = path / "GTINFO.txt"
+        txt_path.write_text(report.strip() + "\n", encoding="utf-8")
+        print(f"报告已保存至 {txt_path}")
     else:
         visualize(path, save_csv=save_csv)
