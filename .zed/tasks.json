@@ -1,0 +1,12 @@
+[
+  {
+    "label": "单角度测试",
+    "command": "./run_one.sh",
+    "cwd": "$ZED_WORKTREE_ROOT",
+  },
+  {
+    "label": "所有角度预览",
+    "command": "./run_all.sh",
+    "cwd": "$ZED_WORKTREE_ROOT",
+  },
+]

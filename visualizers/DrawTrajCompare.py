@@ -13,7 +13,7 @@ import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
 from base.obj import Obj
 from base.scene import FusionIndex, Session, SessionObj
-from base.scene.cal import TrajEvaluator, export_csv
+from base.scene.cal import TrajEvaluator, export_csv, export_yaw
 
 
 def main():
@@ -22,6 +22,14 @@ def main():
     dap.parser.add_argument(
         "--device", type=str, default="SM", help="指定设备 (HW/SM/RM)"
     )
+    dap.parser.add_argument(
+        "--yaw",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("GT_YAW", "EXTRA_YAW"),
+        help="手动指定 yaw 角度（度）",
+    )
     dap.parse()
 
     def action(session: Session):
@@ -29,7 +37,7 @@ def main():
 
         if te_temp_file.exists() and not dap.regen:
             te = Obj.load(te_temp_file)
-            obj = te.obj
+            obj: SessionObj = te.obj
         else:
             obj = SessionObj(session)
             obj.align_time(rate=1)
@@ -38,8 +46,9 @@ def main():
             Obj.save(te, te_temp_file)
 
         te.report()
+
         if dap.visual:
-            bre.rerun_init(session.label)
+            bre.rerun_init(f"{session.device}_s{session.session_id}")
             bre.send_pose_data(obj.gt_pose, "Groundtruth", color=[192, 72, 72])
             bre.send_pose_data(obj.fusion_pose, "Fusion", color=[72, 192, 72])
             bre.send_pose_data(obj.cam_pose, "Camera", color=[72, 72, 192])
@@ -58,13 +67,23 @@ def main():
         device = dap.args.device
         index = FusionIndex.from_scene(path) if path.is_dir() else FusionIndex(path)
         session = index[(s_id, device)]
+        if dap.args.yaw:
+            session.gt_yaw, session.extra_yaw = dap.args.yaw
+            session.has_yaw = True
+
+        print(
+            f"> 角度 [{session.label}] gt_yaw={session.gt_yaw}, extra_yaw={session.extra_yaw}"
+        )
         action(session)
+
     elif dap.dataset:
         path = Path(dap.dataset)
         index = FusionIndex.from_scene(path) if path.is_dir() else FusionIndex(path)
+        index.print_summary()
         te_list = [action(s) for s in index]
         output_dir = path if path.is_dir() else path.parent
         export_csv(te_list, output_dir)
+        export_yaw(te_list, output_dir)
 
     else:
         dap.parser.print_help()

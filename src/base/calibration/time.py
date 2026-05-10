@@ -36,7 +36,7 @@ def match21(
     cs1: PosesData,
     cs2: PosesData,
     *,
-    time_range=(0, 50),
+    time_range=(0, 60),
     resolution=100,
     check_plot_path: str | Path | None = None,
 ) -> int:

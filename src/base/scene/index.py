@@ -65,6 +65,21 @@ class FusionIndex:
 
     # ---- 附加 ----
 
+    def attach_yaw(self, yaw_csv: str | Path) -> None:
+        """读取 TE_yaw.csv，按 label 匹配并设置 Session 的 gt_yaw / extra_yaw"""
+        df = pd.read_csv(yaw_csv)
+        label_map: dict[str, tuple[float, float]] = {}
+        for _, row in df.iterrows():
+            label = str(row["label"])
+            gt = float(row["gt_yaw"]) if row["gt_yaw"] != "-" else 0.0
+            ex = float(row["extra_yaw"]) if row["extra_yaw"] != "-" else 0.0
+            label_map[label] = (gt, ex)
+
+        for s in self._sessions.values():
+            if s.label in label_map:
+                s.gt_yaw, s.extra_yaw = label_map[s.label]
+                s.has_yaw = True
+
     def attach(self, other: "FusionIndex") -> None:
         """附加另一个 FusionIndex，校验 GT 一致性后注入 fusion_csv_extra"""
         self._extra_label = other.label
@@ -132,6 +147,15 @@ class FusionIndex:
             )
         if network_idx is not None:
             fusion_idx.attach(network_idx)
+
+        # 自动附加 TE_yaw.csv（场景目录级别）
+        yaw_csv = scene / "TE_yaw.csv"
+        if yaw_csv.exists():
+            print(f"附加 TE_yaw.csv: {yaw_csv}")
+            fusion_idx.attach_yaw(yaw_csv)
+        else:
+            print(f"未找到 TE_yaw.csv: {yaw_csv}")
+
         return fusion_idx
 
     # ---- 表格 ----
@@ -146,6 +170,8 @@ class FusionIndex:
             COL_W.append(30)
             extra = self.extra_label or "附加"
             COLS.append(f"附加({extra})")
+        COL_W.extend([6, 8])
+        COLS.extend(["GT Yaw", "Net Yaw"])
 
         header = " | ".join(pad_center(COLS[k], COL_W[k]) for k in range(len(COLS)))
         sep = "-" * max(display_width(header), 64)
@@ -172,6 +198,8 @@ class FusionIndex:
                         s.fusion_csv_extra.parent.name if s.fusion_csv_extra else "-"
                     )
                     values.append(extra_label)
+                values.append(f"{s.gt_yaw:.1f}°")
+                values.append(f"{s.extra_yaw:.1f}°")
                 cells = [pad_center(values[k], COL_W[k]) for k in range(len(COLS))]
                 print(" | ".join(cells))
         print(sep + "\n")

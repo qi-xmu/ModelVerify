@@ -18,6 +18,7 @@ def interpolate_vector3(
     bounds_error: bool = False,
 ) -> NDArray:
     assert len(vec3) == len(t_old_us)
+    t_old_us = t_old_us.astype(np.float64)
     vec3 = np.array(vec3)
 
     interp = interp1d(
@@ -45,13 +46,15 @@ def get_time_series(
     assert t_start_us < t_end_us, (
         "Time series must be non-empty and have a valid interval"
     )
-    t_us = np.arange(t_start_us, t_end_us, interval, dtype=np.int64)
+    t_us = np.arange(t_start_us, t_end_us, interval)
     # 限制时间轴长度
     start_idx = 0 if t_start_s is None else int(max(t_start_s * rate, 0))
     end_idx = len(t_us) if t_end_s is None else int(min(t_end_s * rate, len(t_us)))
     t_us = t_us[start_idx:end_idx]
 
     assert t_us[0] >= t_start_us and t_us[-1] <= t_end_us, (
-        "t_us must be within t_start_us and t_end_us"
+        f"t_us must be within t_start_us and t_end_us, got {t_us[0]} and {t_us[-1]}, "
+        f"t_start_us={t_start_us} and t_end_us={t_end_us}, "
+        f"start_idx={start_idx} and end_idx={end_idx}"
     )
     return t_us

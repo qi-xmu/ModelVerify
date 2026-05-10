@@ -131,82 +131,111 @@ class TrajEvaluator:
 
 
 def export_csv(te_list: list[TrajEvaluator], output_dir: Path) -> None:
-    """将评估结果导出为三个 CSV 文件，按设备分组、场次排列"""
+    """将评估结果导出为单个 CSV，按设备分组、场次排列，含 ATE/RTE/RTE90 及提升率"""
     import csv
 
-    metrics = [
-        (
-            "ATE_RMSE.csv",
-            lambda r: r.cam_ate()[1],
-            lambda r: r.network_ate()[1],
-            lambda r: r.fusion_ate()[1],
-        ),
-        (
-            "RTE_RMSE.csv",
-            lambda r: r.cam_rte()[1],
-            lambda r: r.network_rte()[1],
-            lambda r: r.fusion_rte()[1],
-        ),
-        (
-            "RTE_90.csv",
-            lambda r: _pct(r, "cam_rte_list", 90),
-            lambda r: _pct(r, "network_rte_list", 90),
-            lambda r: _pct(r, "fusion_rte_list", 90),
-        ),
-    ]
-
     # 构建 {(device, session_id): EvalResult}
-    results: dict[tuple[str, int], EvalResult] = {}
+    results: dict[tuple[str, int], tuple[EvalResult, str]] = {}
     for te in te_list:
         s = te.obj.session
-        results[(s.device, s.session_id)] = te._result  # type: ignore
+        results[(s.device, s.session_id)] = (te._result, s.label)  # type: ignore
 
     devices = sorted({d for d, _ in results})
     sessions = sorted({sid for _, sid in results})
 
+    def _imp(before: float, after: float) -> str:
+        if before <= 0:
+            return "-"
+        return f"{(before - after) / before * 100:.1f}%"
+
+    header = ["label",
+        "cam_ATE", "net_ATE", "fus_ATE", "cam_ATE提升%", "net_ATE提升%",
+        "cam_RTE", "net_RTE", "fus_RTE", "cam_RTE提升%", "net_RTE提升%",
+        "cam_RTE90", "net_RTE90", "fus_RTE90", "cam_R90提升%", "net_R90提升%",
+    ]
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    for filename, f_cam, f_network, f_fusion in metrics:
-        path = output_dir / filename
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["", "cam", "network", "fusion"])
-            for dev in devices:
-                dev_rows = []
-                for sid in sessions:
-                    key = (dev, sid)
-                    if key not in results:
-                        continue
-                    r = results[key]
-                    dev_rows.append([
-                        f"{dev}_s{sid}",
-                        f"{f_cam(r):.3f}",
-                        f"{f_network(r):.3f}",
-                        f"{f_fusion(r):.3f}",
-                    ])
-                for row in dev_rows:
-                    writer.writerow(row)
-                if dev_rows:
-                    n = len(dev_rows)
-                    cam_avg = sum(float(r[1]) for r in dev_rows) / n
-                    net_avg = sum(float(r[2]) for r in dev_rows) / n
-                    fus_avg = sum(float(r[3]) for r in dev_rows) / n
-                    writer.writerow([
-                        f"{dev}合计",
-                        f"{cam_avg:.3f}",
-                        f"{net_avg:.3f}",
-                        f"{fus_avg:.3f}",
-                    ])
-                    # 提升率: (cam - fusion) / cam * 100%
-                    cam_imp = (cam_avg - fus_avg) / cam_avg * 100 if cam_avg > 0 else 0
-                    net_imp = (net_avg - fus_avg) / net_avg * 100 if net_avg > 0 else 0
-                    writer.writerow([
-                        f"{dev}提升%",
-                        f"{cam_imp:.1f}%",
-                        f"{net_imp:.1f}%",
-                        "-",
-                    ])
-                writer.writerow([])
-        print(f"> {filename} saved to {path}")
+    path = output_dir / "TE_metrics.csv"
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+
+        for dev in devices:
+            dev_rows = []
+            for sid in sessions:
+                key = (dev, sid)
+                if key not in results:
+                    continue
+                r, label = results[key]
+                cam_ate = r.cam_ate()[1]
+                net_ate = r.network_ate()[1]
+                fus_ate = r.fusion_ate()[1]
+                cam_rte = r.cam_rte()[1]
+                net_rte = r.network_rte()[1]
+                fus_rte = r.fusion_rte()[1]
+                cam_r90 = _pct(r, "cam_rte_list", 90)
+                net_r90 = _pct(r, "network_rte_list", 90)
+                fus_r90 = _pct(r, "fusion_rte_list", 90)
+
+                dev_rows.append([
+                    label,
+                    f"{cam_ate:.3f}", f"{net_ate:.3f}", f"{fus_ate:.3f}",
+                    _imp(cam_ate, fus_ate), _imp(net_ate, fus_ate),
+                    f"{cam_rte:.3f}", f"{net_rte:.3f}", f"{fus_rte:.3f}",
+                    _imp(cam_rte, fus_rte), _imp(net_rte, fus_rte),
+                    f"{cam_r90:.3f}", f"{net_r90:.3f}", f"{fus_r90:.3f}",
+                    _imp(cam_r90, fus_r90), _imp(net_r90, fus_r90),
+                ])
+            for row in dev_rows:
+                writer.writerow(row)
+            if dev_rows:
+                n = len(dev_rows)
+                cols = list(zip(*[r[1:] for r in dev_rows]))
+                # 只对数值列取平均（跳过提升率列 % 字符串）
+                idx = [0, 1, 2, 5, 6, 7, 10, 11, 12]  # cam/net/fus for ATE, RTE, RTE90
+                avgs = [sum(float(cols[i][j]) for j in range(n)) / n for i in idx]
+                cam_a, net_a, fus_a = avgs[0], avgs[1], avgs[2]
+                cam_r, net_r, fus_r = avgs[3], avgs[4], avgs[5]
+                cam_90, net_90, fus_90 = avgs[6], avgs[7], avgs[8]
+                writer.writerow([
+                    f"{dev}合计",
+                    f"{cam_a:.3f}", f"{net_a:.3f}", f"{fus_a:.3f}",
+                    _imp(cam_a, fus_a), _imp(net_a, fus_a),
+                    f"{cam_r:.3f}", f"{net_r:.3f}", f"{fus_r:.3f}",
+                    _imp(cam_r, fus_r), _imp(net_r, fus_r),
+                    f"{cam_90:.3f}", f"{net_90:.3f}", f"{fus_90:.3f}",
+                    _imp(cam_90, fus_90), _imp(net_90, fus_90),
+                ])
+            writer.writerow([])
+
+    print(f"> TE_metrics.csv saved to {path}")
+
+
+def export_yaw(te_list: list[TrajEvaluator], output_dir: Path) -> None:
+    """导出每个 session 的 gt_yaw / extra_yaw（度）"""
+    import csv
+
+    devices = sorted({te.obj.session.device for te in te_list})
+    sessions = sorted({te.obj.session.session_id for te in te_list})
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "TE_yaw.csv"
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["label", "gt_yaw", "extra_yaw"])
+        for dev in devices:
+            for sid in sessions:
+                for te in te_list:
+                    s = te.obj.session
+                    if s.device == dev and s.session_id == sid:
+                        writer.writerow([
+                            s.label,
+                            f"{te.obj.session.gt_yaw:.1f}",
+                            f"{te.obj.session.extra_yaw:.1f}",
+                        ])
+                        break
+            writer.writerow([])
+    print(f"> TE_yaw.csv saved to {path}")
 
 
 def _pct(result: EvalResult, attr: str, p: int) -> float:
