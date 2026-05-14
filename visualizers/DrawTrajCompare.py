@@ -1,19 +1,72 @@
 #!/usr/bin/env python3
 """
-轨迹绘制对比 — GT / Fusion / Camera 轨迹 Rerun 可视化
+轨迹绘制对比 — GT / Fusion / Camera 轨迹 2D 地图 + Rerun 可视化
 
 用法:
     uv run python visualizers/DrawTrajCompare.py -u <db_or_csv_or_results.csv>
     uv run python visualizers/DrawTrajCompare.py -u <results.csv> --session 1 --device SM
+    uv run python visualizers/DrawTrajCompare.py -d <scene_dir> --plot
 """
 
 from pathlib import Path
+
+import matplotlib
+import matplotlib.pyplot as plt
 
 import base.rerun_ext as bre
 from base.args_parser import DatasetArgsParser
 from base.obj import Obj
 from base.scene import FusionIndex, Session, SessionObj
 from base.scene.cal import TrajEvaluator, export_csv, export_yaw
+
+# 中文字体设置
+matplotlib.rcParams["font.sans-serif"] = [
+    "WenQuanYi Micro Hei",
+    "PingFang SC",
+    "Heiti SC",
+    "Microsoft YaHei",
+]
+matplotlib.rcParams["axes.unicode_minus"] = False
+
+
+def _plot_trajectory(obj: SessionObj, save_path: Path) -> None:
+    """绘制二维轨迹对比图，保存到 save_path"""
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    configs = [
+        (obj.gt_pose.ps[:, :2], "真值", "red", "^-"),
+        (obj.fusion_pose.ps[:, :2], "FUS", "green", "s-"),
+        (obj.cam_pose.ps[:, :2], "VIO", "gold", ".-"),
+    ]
+    if obj.extra_pose is not None:
+        map_name = {"network": "INO", "fix": "FIX"}
+        configs.append(
+            (obj.extra_pose.ps[:, :2], map_name[obj.session.extra_kind], "blue", "x-")
+        )
+
+    for xy, label, color, marker in configs:
+        ax.plot(
+            xy[:, 0],
+            xy[:, 1],
+            marker,
+            color=color,
+            label=label,
+            linewidth=1,
+            markersize=3,
+            markerfacecolor=color,
+            markeredgewidth=0.5,
+        )
+
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.legend(fontsize=12)
+    ax.tick_params(axis="both", labelsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect("equal")
+
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"> 轨迹图已保存: {save_path}")
 
 
 def main():
@@ -29,6 +82,11 @@ def main():
         default=None,
         metavar=("GT_YAW", "EXTRA_YAW"),
         help="手动指定 yaw 角度（度）",
+    )
+    dap.parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="绘制二维轨迹对比图并保存（PNG, dpi=300）",
     )
     dap.parse()
 
@@ -59,6 +117,10 @@ def main():
                 f"[{session.label}] GT={len(obj.gt_pose)}, Fusion={len(obj.fusion_pose)}"
             )
 
+        if dap.args.plot:
+            plot_path = session.parent_dir / f"trajectory_{session.label}.png"
+            _plot_trajectory(obj, plot_path)
+
         return te
 
     if dap.unit:
@@ -83,7 +145,8 @@ def main():
         te_list = [action(s) for s in index]
         output_dir = path if path.is_dir() else path.parent
         export_csv(te_list, output_dir)
-        export_yaw(te_list, output_dir)
+        if not index.has_yaw:
+            export_yaw(te_list, output_dir)
 
     else:
         dap.parser.print_help()

@@ -21,10 +21,11 @@ class FusionIndex:
 
     def __init__(self, csv_path: str | Path):
         self.path = Path(csv_path)
-        self._label = self._parse_label(self.path.name)
+        self.kind: str = self._parse_label(self.path.name)
         self._extra_label: str | None = None
         df = pd.read_csv(self.path)
         self._sessions: dict[tuple[int, str], Session] = {}
+        self.has_yaw = False
 
         for _, row in df.iterrows():
             s = Session(
@@ -38,9 +39,38 @@ class FusionIndex:
             )
             self._sessions[s.key] = s
 
-    @property
-    def label(self) -> str:
-        return self._label
+        # 自动修复路径：当场景目录移动后，CSV 中记录的绝对路径可能失效
+        self._rebase_paths()
+
+    def _rebase_paths(self) -> None:
+        """根据 CSV 自身位置推断场景目录，修复不存在的路径。全部成功只打一行，失败则报错。"""
+        subdir_name = self.path.parent.name
+        scene_dir = self.path.parent.parent
+        fixed = 0
+        old_base: Path | None = None
+        for s in self._sessions.values():
+            for attr in ("gt_db", "navio_db", "fusion_csv", "extra_csv"):
+                p: Path | None = getattr(s, attr)
+                if p is not None and not p.exists():
+                    if subdir_name not in p.parts:
+                        raise RuntimeError(
+                            f"> {p.parent} 重定向失败: 路径中未找到 '{subdir_name}'"
+                        )
+                    idx = p.parts.index(subdir_name)
+                    if old_base is None:
+                        old_base = Path(*p.parts[:idx])
+                    tail = Path(*p.parts[idx:])
+                    new_p = scene_dir / tail
+                    if new_p.exists():
+                        setattr(s, attr, new_p)
+                        fixed += 1
+                    else:
+                        raise RuntimeError(
+                            f"> {old_base} 重定向到 {scene_dir}: 失败 → {new_p} 目标也不存在"
+                        )
+        if fixed and old_base:
+            print(f"> {old_base} 重定向到 {scene_dir}: {fixed} 个")
+        # errors 为空且 fixed 为空说明无需修复，静默
 
     @property
     def extra_label(self) -> str | None:
@@ -82,14 +112,15 @@ class FusionIndex:
 
     def attach(self, other: "FusionIndex") -> None:
         """附加另一个 FusionIndex，校验 GT 一致性后注入 fusion_csv_extra"""
-        self._extra_label = other.label
+        self._extra_label = other.kind
         for key, s in self._sessions.items():
             if key not in other._sessions:
                 raise KeyError(f"附加索引缺少 {key}")
             other_s = other._sessions[key]
             if s.gt_stem != other_s.gt_stem:
                 raise ValueError(f"GT 不一致: [{key}] {s.gt_stem} != {other_s.gt_stem}")
-            s.fusion_csv_extra = other_s.fusion_csv
+            s.extra_csv = other_s.fusion_csv
+            s.extra_kind = other.kind
 
     # ---- 便利接口 ----
 
@@ -114,16 +145,18 @@ class FusionIndex:
 
     @classmethod
     def from_scene(cls, scene_dir: str | Path) -> "FusionIndex":
-        """扫描场景目录，自动发现 *_fusion / *_network 子文件夹，将 network 附加到 fusion"""
+        """扫描场景目录，自动发现 *_fusion / *_network / *_fix 子文件夹，将 network/fix 附加到 fusion"""
         scene = Path(scene_dir)
         scene_name = scene.name
         fusion_idx: FusionIndex | None = None
-        network_idx: FusionIndex | None = None
+        extra_idx: FusionIndex | None = None
 
         for subdir in sorted(scene.iterdir()):
             if not subdir.is_dir():
                 continue
-            m = re.match(rf".*{re.escape(scene_name)}_(fusion|network)$", subdir.name)
+            m = re.match(
+                rf".*{re.escape(scene_name)}_(fusion|network|fix)$", subdir.name
+            )
             if not m:
                 continue
             kind = m.group(1)
@@ -137,21 +170,27 @@ class FusionIndex:
             idx = cls(csv_path)
             if kind == "fusion":
                 fusion_idx = idx
-            elif kind == "network":
-                network_idx = idx
+            elif kind in ("network", "fix"):
+                extra_idx = idx
+
+        if fusion_idx is None and extra_idx is not None:
+            fusion_idx = extra_idx
+            extra_idx = None
 
         if fusion_idx is None:
             raise FileNotFoundError(
                 f"场景 {scene_name} 中未找到 fusion 结果文件夹 "
                 f"(期望子目录名称包含 '{scene_name}_fusion')"
             )
-        if network_idx is not None:
-            fusion_idx.attach(network_idx)
+        if extra_idx is not None:
+            print(f"> 附加Index {extra_idx.kind}: {extra_idx.path}")
+            fusion_idx.attach(extra_idx)
 
         # 自动附加 TE_yaw.csv（场景目录级别）
         yaw_csv = scene / "TE_yaw.csv"
         if yaw_csv.exists():
-            print(f"附加 TE_yaw.csv: {yaw_csv}")
+            print(f"> 附加YAW TE_yaw.csv: {yaw_csv}")
+            fusion_idx.has_yaw = True
             fusion_idx.attach_yaw(yaw_csv)
         else:
             print(f"未找到 TE_yaw.csv: {yaw_csv}")
@@ -162,10 +201,10 @@ class FusionIndex:
 
     def print_summary(self) -> None:
         """打印索引摘要表格"""
-        has_extra = any(s.fusion_csv_extra for s in self)
+        has_extra = any(s.extra_csv for s in self)
 
         COL_W = [5, 6, 8, 14, 30]
-        COLS = ["场次", "设备", "时长(s)", "GT", f"标签({self.label})"]
+        COLS = ["场次", "设备", "时长(s)", "GT", f"标签({self.kind})"]
         if has_extra:
             COL_W.append(30)
             extra = self.extra_label or "附加"
@@ -194,9 +233,7 @@ class FusionIndex:
                     s.label,
                 ]
                 if has_extra:
-                    extra_label = (
-                        s.fusion_csv_extra.parent.name if s.fusion_csv_extra else "-"
-                    )
+                    extra_label = s.extra_csv.parent.name if s.extra_csv else "-"
                     values.append(extra_label)
                 values.append(f"{s.gt_yaw:.1f}°")
                 values.append(f"{s.extra_yaw:.1f}°")

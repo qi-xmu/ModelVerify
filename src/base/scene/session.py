@@ -24,7 +24,8 @@ class Session:
     navio_db: Path
     fusion_csv: Path
     status: str
-    fusion_csv_extra: Path | None = None
+    extra_csv: Path | None = None
+    extra_kind: str = ""
     gt_yaw: float = 0.0
     extra_yaw: float = 0.0
     has_yaw: bool = False
@@ -124,8 +125,10 @@ class SessionObj:
         navio.close()
 
         self.extra_pose = None
-        if self.session.fusion_csv_extra and self.session.fusion_csv_extra.exists():
-            self.extra_pose = FusionData.from_csv(self.session.fusion_csv_extra)
+        if self.session.extra_csv and self.session.extra_csv.exists():
+            self.extra_pose = FusionData.from_csv(self.session.extra_csv)
+        else:
+            print("> 附加数据不存在: ", self.session.extra_csv)
 
     def align_time(self, rate: int = 200) -> None:
         """通过角速度互相关计算时间偏移，对齐所有轨迹到共同时间窗口"""
@@ -169,7 +172,7 @@ class SessionObj:
         space_match = Pose.from_rotation(rot_yaw)
         self.gt_pose.transform_global(space_match)
 
-        if self.extra_pose is not None:
+        if self.extra_pose is not None and self.session.extra_kind == "network":
             if not self.session.has_yaw:
                 self.session.extra_yaw = _yaw_from_both(
                     self.extra_pose, self.fusion_pose
